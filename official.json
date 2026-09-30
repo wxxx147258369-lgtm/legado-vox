@@ -1,0 +1,49 @@
+{
+  "tag_name": "1.0.0",
+  "name": "Release 1.0.0",
+  "body": "### 更新内容\n\n* Add files via upload",
+  "prerelease": false,
+  "created_at": "2026-09-30T23:27:32Z",
+  "assets": [
+    {
+      "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0-arm64-v8a.apk",
+      "content_type": "application/vnd.android.package-archive",
+      "created_at": "2026-09-30T23:40:12Z",
+      "download_count": 0,
+      "id": 602019123,
+      "name": "legado-vox-1.0.0-arm64-v8a.apk",
+      "state": "uploaded",
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602019123"
+    },
+    {
+      "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0-armeabi-v7a.apk",
+      "content_type": "application/vnd.android.package-archive",
+      "created_at": "2026-09-30T23:40:12Z",
+      "download_count": 0,
+      "id": 602019121,
+      "name": "legado-vox-1.0.0-armeabi-v7a.apk",
+      "state": "uploaded",
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602019121"
+    },
+    {
+      "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0.apk",
+      "content_type": "application/vnd.android.package-archive",
+      "created_at": "2026-09-30T23:40:12Z",
+      "download_count": 0,
+      "id": 602019122,
+      "name": "legado-vox-1.0.0.apk",
+      "state": "uploaded",
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602019122"
+    },
+    {
+      "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/mapping.txt",
+      "content_type": "text/plain",
+      "created_at": "2026-09-30T23:40:12Z",
+      "download_count": 0,
+      "id": 602019120,
+      "name": "mapping.txt",
+      "state": "uploaded",
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602019120"
+    }
+  ]
+}
