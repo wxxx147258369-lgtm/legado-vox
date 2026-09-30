@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   release:
-    if: github.repository == 'Autsunset/legado-vox' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/auto-release.yml
     with:
       publish: true
