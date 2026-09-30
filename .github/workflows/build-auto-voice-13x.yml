@@ -1,0 +1,102 @@
+name: 一键构建-全小说自动多人配音版-1.3倍
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-auto-voice-13x.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 取源码
+        uses: actions/checkout@v5
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 写入全小说自动多人配音逻辑
+        shell: bash
+        run: |
+          echo 'cGFja2FnZSBpby5sZWdhZG8uYXBwLmRvbWFpbi51c2VjYXNlCgppbXBvcnQgaW8ubGVnYWRvLmFwcC5kb21haW4uZ2F0ZXdheS5SZWFkQWxvdWRWb2ljZUdhdGV3YXkKaW1wb3J0IGlvLmxlZ2Fkby5hcHAuZG9tYWluLm1vZGVsLnJlYWRhbG91ZC5Cb29rVm9pY2VCaW5kaW5nCmltcG9ydCBpby5sZWdhZG8uYXBwLmRvbWFpbi5tb2RlbC5yZWFkYWxvdWQuQ2hhcHRlclNwZWVjaFNlZ21lbnQKaW1wb3J0IGlvLmxlZ2Fkby5hcHAuZG9tYWluLm1vZGVsLnJlYWRhbG91ZC5DaGFyYWN0ZXJQZXJmb3JtYW5jZVByb2ZpbGUKaW1wb3J0IGlvLmxlZ2Fkby5hcHAuZG9tYWluLm1vZGVsLnJlYWRhbG91ZC5SZWFkQWxvdWRWb2ljZQppbXBvcnQgaW8ubGVnYWRvLmFwcC5kb21haW4ubW9kZWwucmVhZGFsb3VkLlNwZWVjaFBsYW5JdGVtCmltcG9ydCBpby5sZWdhZG8uYXBwLmRvbWFpbi5tb2RlbC5yZWFkYWxvdWQuU3BlZWNoUm9sZVR5cGUKCmNsYXNzIEJ1aWxkU3BlZWNoUGxhblVzZUNhc2UoCiAgICBwcml2YXRlIHZhbCB2b2ljZUdhdGV3YXk6IFJlYWRBbG91ZFZvaWNlR2F0ZXdheSwKKSB7CgogICAgc3VzcGVuZCBvcGVyYXRvciBmdW4gaW52b2tlKAogICAgICAgIGJvb2tVcmw6IFN0cmluZywKICAgICAgICBzZWdtZW50czogTGlzdDxDaGFwdGVyU3BlZWNoU2VnbWVudD4sCiAgICAgICAgcHJlZmVycmVkRGVmYXVsdFZvaWNlSWQ6IFN0cmluZz8gPSBudWxsLAogICAgICAgIGNoYXJhY3RlclBlcmZvcm1hbmNlczogTWFwPFN0cmluZywgQ2hhcmFjdGVyUGVyZm9ybWFuY2VQcm9maWxlPiA9IGVtcHR5TWFwKCksCiAgICAgICAgdXNlTXVsdGlTcGVha2VyOiBCb29sZWFuID0gdHJ1ZSwKICAgICk6IExpc3Q8U3BlZWNoUGxhbkl0ZW0+IHsKICAgICAgICB2YWwgdm9pY2VzID0gdm9pY2VHYXRld2F5LmdldEVuYWJsZWRWb2ljZXMoKQogICAgICAgIHZhbCB2b2ljZXNCeUlkID0gdm9pY2VzLmFzc29jaWF0ZUJ5KFJlYWRBbG91ZFZvaWNlOjppZCkKICAgICAgICB2YWwgYmluZGluZ3MgPSB2b2ljZUdhdGV3YXkuZ2V0QmluZGluZ3MoYm9va1VybCkKICAgICAgICAgICAgLmFzc29jaWF0ZUJ5IHsgaXQuc3ViamVjdFR5cGUgdG8gaXQuc3ViamVjdElkIH0KCiAgICAgICAgLy8g5YWo5bCP6K+06YCa55So6Ieq5Yqo6YWN6Z+z77ya55u05o6l6LCD55So5bey5a6J6KOF55qEIEVkZ2UgVFRTIEVuZ2luZeOAggogICAgICAgIC8vIOS4jemcgOimgSBUVFMgU2VydmVy44CB5LiN6ZyA6KaBIEhUVFAg6KeE5YiZ77yM5Lmf5LiN6KaB5rGC6YCQ5Liq5Lq654mp57uR5a6a44CCCiAgICAgICAgLy8g6Iul55So5oi35omL5bel57uR5a6a5p+Q5Lq654mpL+inkuiJsu+8jOS6uuW3peiuvue9ruWni+e7iOS8mOWFiOOAggogICAgICAgIHZhbCBhdXRvID0gVW5pdmVyc2FsRWRnZUNhc3RpbmcoKQoKICAgICAgICB2YWwgbmFycmF0b3IgPSBiaW5kaW5ncy52b2ljZSgKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX05BUlJBVE9SLAogICAgICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfTkFSUkFUT1IsCiAgICAgICAgICAgIHZvaWNlc0J5SWQsCiAgICAgICAgKSA/OiBhdXRvLm5hcnJhdG9yKCkKCiAgICAgICAgdmFsIHVua25vd24gPSBiaW5kaW5ncy52b2ljZSgKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX1VOS05PV04sCiAgICAgICAgICAgIEJvb2tWb2ljZUJpbmRpbmcuU1VCSkVDVF9VTktOT1dOLAogICAgICAgICAgICB2b2ljZXNCeUlkLAogICAgICAgICkgPzogYXV0by5uYXJyYXRvcigpCgogICAgICAgIHZhbCBkZWZhdWx0Vm9pY2UgPSBwcmVmZXJyZWREZWZhdWx0Vm9pY2VJZD8ubGV0KHZvaWNlc0J5SWQ6OmdldCkKICAgICAgICAgICAgPzogbmFycmF0b3IKCiAgICAgICAgcmV0dXJuIHNlZ21lbnRzLm1hcCB7IHNlZ21lbnQgLT4KICAgICAgICAgICAgdmFsIHBlcmZvcm1hbmNlID0gc2VnbWVudC5jaGFyYWN0ZXJJZD8ubGV0KGNoYXJhY3RlclBlcmZvcm1hbmNlczo6Z2V0KQogICAgICAgICAgICB2YWwgc3RhYmxlS2V5ID0gYnVpbGRTdHJpbmcgewogICAgICAgICAgICAgICAgYXBwZW5kKGJvb2tVcmwpCiAgICAgICAgICAgICAgICBhcHBlbmQoJ1x1MDAwMCcpCiAgICAgICAgICAgICAgICBhcHBlbmQoCiAgICAgICAgICAgICAgICAgICAgc2VnbWVudC5jaGFyYWN0ZXJJZAogICAgICAgICAgICAgICAgICAgICAgICA/OiBzZWdtZW50LmNoYXJhY3Rlck5hbWUudGFrZUlmKFN0cmluZzo6aXNOb3RCbGFuaykKICAgICAgICAgICAgICAgICAgICAgICAgPzogInVua25vd24iCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIHZhbCByb2xlVm9pY2UgPSBwZXJmb3JtYW5jZT8ucm9sZVN1YmplY3QoKT8ubGV0IHsgc3ViamVjdCAtPgogICAgICAgICAgICAgICAgYmluZGluZ3Mudm9pY2Uoc3ViamVjdCwgc3ViamVjdCwgdm9pY2VzQnlJZCkKICAgICAgICAgICAgICAgICAgICA/OiBhdXRvLmZvclJvbGUoc3ViamVjdCwgc3RhYmxlS2V5KQogICAgICAgICAgICB9CgogICAgICAgICAgICB2YWwgZ2VuZGVyRmFsbGJhY2sgPSB3aGVuIChwZXJmb3JtYW5jZT8ucmVzb2x2ZWRHZW5kZXIoKSkgewogICAgICAgICAgICAgICAgIm1hbGUiIC0+IGJpbmRpbmdzLnZvaWNlKAogICAgICAgICAgICAgICAgICAgIEJvb2tWb2ljZUJpbmRpbmcuU1VCSkVDVF9VTktOT1dOX01BTEUsCiAgICAgICAgICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX1VOS05PV05fTUFMRSwKICAgICAgICAgICAgICAgICAgICB2b2ljZXNCeUlkLAogICAgICAgICAgICAgICAgKSA/OiBhdXRvLm1hbGVGYWxsYmFjayhzdGFibGVLZXkpCgogICAgICAgICAgICAgICAgImZlbWFsZSIgLT4gYmluZGluZ3Mudm9pY2UoCiAgICAgICAgICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX1VOS05PV05fRkVNQUxFLAogICAgICAgICAgICAgICAgICAgIEJvb2tWb2ljZUJpbmRpbmcuU1VCSkVDVF9VTktOT1dOX0ZFTUFMRSwKICAgICAgICAgICAgICAgICAgICB2b2ljZXNCeUlkLAogICAgICAgICAgICAgICAgKSA/OiBhdXRvLmZlbWFsZUZhbGxiYWNrKHN0YWJsZUtleSkKCiAgICAgICAgICAgICAgICBlbHNlIC0+IG51bGwKICAgICAgICAgICAgfQoKICAgICAgICAgICAgdmFsIHByaW1hcnkgPSBpZiAoIXVzZU11bHRpU3BlYWtlcikgewogICAgICAgICAgICAgICAgZGVmYXVsdFZvaWNlCiAgICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgICAgICB2YWwgY2hhcmFjdGVyVm9pY2UgPSBzZWdtZW50LmNoYXJhY3RlcklkPy5sZXQgeyBjaGFyYWN0ZXJJZCAtPgogICAgICAgICAgICAgICAgICAgIGJpbmRpbmdzLnZvaWNlKAogICAgICAgICAgICAgICAgICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfQ0hBUkFDVEVSLAogICAgICAgICAgICAgICAgICAgICAgICBjaGFyYWN0ZXJJZCwKICAgICAgICAgICAgICAgICAgICAgICAgdm9pY2VzQnlJZCwKICAgICAgICAgICAgICAgICAgICApCiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgd2hlbiAoc2VnbWVudC5yb2xlVHlwZSkgewogICAgICAgICAgICAgICAgICAgIFNwZWVjaFJvbGVUeXBlLkNoYXJhY3RlciwKICAgICAgICAgICAgICAgICAgICBTcGVlY2hSb2xlVHlwZS5UaG91Z2h0IC0+IGNoYXJhY3RlclZvaWNlCiAgICAgICAgICAgICAgICAgICAgICAgID86IHJvbGVWb2ljZQogICAgICAgICAgICAgICAgICAgICAgICA/OiBnZW5kZXJGYWxsYmFjawogICAgICAgICAgICAgICAgICAgICAgICA/OiBhdXRvLnVua25vd25DaGFyYWN0ZXIoc3RhYmxlS2V5KQogICAgICAgICAgICAgICAgICAgICAgICA/OiB1bmtub3duCiAgICAgICAgICAgICAgICAgICAgICAgID86IG5hcnJhdG9yCiAgICAgICAgICAgICAgICAgICAgICAgID86IGRlZmF1bHRWb2ljZQoKICAgICAgICAgICAgICAgICAgICBTcGVlY2hSb2xlVHlwZS5Vbmtub3duIC0+IHVua25vd24gPzogbmFycmF0b3IgPzogZGVmYXVsdFZvaWNlCiAgICAgICAgICAgICAgICAgICAgU3BlZWNoUm9sZVR5cGUuTmFycmF0b3IgLT4gbmFycmF0b3IgPzogZGVmYXVsdFZvaWNlCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIHZhbCBmYWxsYmFja1ZvaWNlcyA9IGlmICghdXNlTXVsdGlTcGVha2VyKSB7CiAgICAgICAgICAgICAgICBlbXB0eUxpc3QoKQogICAgICAgICAgICB9IGVsc2UgewogICAgICAgICAgICAgICAgYnVpbGRMaXN0IHsKICAgICAgICAgICAgICAgICAgICBpZiAoc2VnbWVudC5yb2xlVHlwZSAhPSBTcGVlY2hSb2xlVHlwZS5OYXJyYXRvcikgewogICAgICAgICAgICAgICAgICAgICAgICBhZGQocm9sZVZvaWNlKQogICAgICAgICAgICAgICAgICAgICAgICBhZGQoZ2VuZGVyRmFsbGJhY2spCiAgICAgICAgICAgICAgICAgICAgICAgIGFkZChhdXRvLnVua25vd25DaGFyYWN0ZXIoc3RhYmxlS2V5KSkKICAgICAgICAgICAgICAgICAgICAgICAgYWRkKHVua25vd24pCiAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIGFkZChuYXJyYXRvcikKICAgICAgICAgICAgICAgICAgICBhZGQoZGVmYXVsdFZvaWNlKQogICAgICAgICAgICAgICAgfS5maWx0ZXJOb3ROdWxsKCkKICAgICAgICAgICAgICAgICAgICAuZGlzdGluY3RCeShSZWFkQWxvdWRWb2ljZTo6aWQpCiAgICAgICAgICAgICAgICAgICAgLmZpbHRlck5vdCB7IGl0LmlkID09IHByaW1hcnk/LmlkIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgU3BlZWNoUGxhbkl0ZW0oCiAgICAgICAgICAgICAgICBzZWdtZW50ID0gc2VnbWVudCwKICAgICAgICAgICAgICAgIHZvaWNlID0gcHJpbWFyeSwKICAgICAgICAgICAgICAgIGZhbGxiYWNrVm9pY2VzID0gZmFsbGJhY2tWb2ljZXMsCiAgICAgICAgICAgICAgICBjaGFyYWN0ZXJQZXJmb3JtYW5jZSA9IHBlcmZvcm1hbmNlLAogICAgICAgICAgICApCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgZnVuIE1hcDxQYWlyPFN0cmluZywgU3RyaW5nPiwgQm9va1ZvaWNlQmluZGluZz4udm9pY2UoCiAgICAgICAgc3ViamVjdFR5cGU6IFN0cmluZywKICAgICAgICBzdWJqZWN0SWQ6IFN0cmluZywKICAgICAgICB2b2ljZXNCeUlkOiBNYXA8U3RyaW5nLCBSZWFkQWxvdWRWb2ljZT4sCiAgICApOiBSZWFkQWxvdWRWb2ljZT8gPSBnZXQoc3ViamVjdFR5cGUgdG8gc3ViamVjdElkKT8udm9pY2VJZD8ubGV0KHZvaWNlc0J5SWQ6OmdldCkKCiAgICBwcml2YXRlIGZ1biBDaGFyYWN0ZXJQZXJmb3JtYW5jZVByb2ZpbGUucm9sZVN1YmplY3QoKTogU3RyaW5nPyA9IHdoZW4gKHJvbGUpIHsKICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfTUFMRV9MRUFELAogICAgICAgIEJvb2tWb2ljZUJpbmRpbmcuU1VCSkVDVF9GRU1BTEVfTEVBRCwKICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfTUFMRV9TVVBQT1JUSU5HLAogICAgICAgIEJvb2tWb2ljZUJpbmRpbmcuU1VCSkVDVF9GRU1BTEVfU1VQUE9SVElORyAtPiByb2xlCiAgICAgICAgZWxzZSAtPiBudWxsCiAgICB9CgogICAgcHJpdmF0ZSBmdW4gQ2hhcmFjdGVyUGVyZm9ybWFuY2VQcm9maWxlLnJlc29sdmVkR2VuZGVyKCk6IFN0cmluZz8gPSB3aGVuICh2b2ljZUdlbmRlcikgewogICAgICAgICJtYWxlIiwgImZlbWFsZSIgLT4gdm9pY2VHZW5kZXIKICAgICAgICBlbHNlIC0+IHdoZW4gKHJvbGUpIHsKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX01BTEVfTEVBRCwKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX01BTEVfU1VQUE9SVElORyAtPiAibWFsZSIKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX0ZFTUFMRV9MRUFELAogICAgICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfRkVNQUxFX1NVUFBPUlRJTkcgLT4gImZlbWFsZSIKICAgICAgICAgICAgZWxzZSAtPiBudWxsCiAgICAgICAgfQogICAgfQoKICAgIHByaXZhdGUgY2xhc3MgVW5pdmVyc2FsRWRnZUNhc3RpbmcgewoKICAgICAgICBmdW4gbmFycmF0b3IoKTogUmVhZEFsb3VkVm9pY2UgPQogICAgICAgICAgICBlZGdlVm9pY2UoInpoLUNOLVl1bnlhbmdOZXVyYWwiLCAi6Ieq5Yqo5peB55m9IMK3IOS6keaJrCIpCgogICAgICAgIGZ1biBtYWxlRmFsbGJhY2soa2V5OiBTdHJpbmcpOiBSZWFkQWxvdWRWb2ljZSA9IHN0YWJsZVBpY2soCiAgICAgICAgICAgIGxpc3RPZigKICAgICAgICAgICAgICAgICJ6aC1DTi1ZdW5qaWFuTmV1cmFsIiB0byAi6Ieq5Yqo55S35aOwIMK3IOS6keWBpSIsCiAgICAgICAgICAgICAgICAiemgtQ04tWXVuZmVuZ05ldXJhbCIgdG8gIuiHquWKqOeUt+WjsCDCtyDkupHmnqsiLAogICAgICAgICAgICAgICAgInpoLUNOLVl1bmhhb05ldXJhbCIgdG8gIuiHquWKqOeUt+WjsCDCtyDkupHnmpMiLAogICAgICAgICAgICAgICAgInpoLUNOLVl1bmppZU5ldXJhbCIgdG8gIuiHquWKqOeUt+WjsCDCtyDkupHmnbAiLAogICAgICAgICAgICAgICAgInpoLUNOLVl1bnhpYU5ldXJhbCIgdG8gIuiHquWKqOeUt+WjsCDCtyDkupHlpI8iLAogICAgICAgICAgICAgICAgInpoLUNOLVl1bnllTmV1cmFsIiB0byAi6Ieq5Yqo55S35aOwIMK3IOS6kemHjiIsCiAgICAgICAgICAgICAgICAiemgtQ04tWXVuemVOZXVyYWwiIHRvICLoh6rliqjnlLflo7Agwrcg5LqR5rO9IiwKICAgICAgICAgICAgKSwKICAgICAgICAgICAga2V5LAogICAgICAgICkKCiAgICAgICAgZnVuIGZlbWFsZUZhbGxiYWNrKGtleTogU3RyaW5nKTogUmVhZEFsb3VkVm9pY2UgPSBzdGFibGVQaWNrKAogICAgICAgICAgICBsaXN0T2YoCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb3lpTmV1cmFsIiB0byAi6Ieq5Yqo5aWz5aOwIMK3IOaZk+S8iiIsCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb2NoZW5OZXVyYWwiIHRvICLoh6rliqjlpbPlo7Agwrcg5pmT5pmoIiwKICAgICAgICAgICAgICAgICJ6aC1DTi1YaWFvaGFuTmV1cmFsIiB0byAi6Ieq5Yqo5aWz5aOwIMK3IOaZk+a2tSIsCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb21lbmdOZXVyYWwiIHRvICLoh6rliqjlpbPlo7Agwrcg5pmT5qKmIiwKICAgICAgICAgICAgICAgICJ6aC1DTi1YaWFvbW9OZXVyYWwiIHRvICLoh6rliqjlpbPlo7Agwrcg5pmT5aKoIiwKICAgICAgICAgICAgICAgICJ6aC1DTi1YaWFvcWl1TmV1cmFsIiB0byAi6Ieq5Yqo5aWz5aOwIMK3IOaZk+eniyIsCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb3JvdU5ldXJhbCIgdG8gIuiHquWKqOWls+WjsCDCtyDmmZPmn5QiLAogICAgICAgICAgICAgICAgInpoLUNOLVhpYW9ydWlOZXVyYWwiIHRvICLoh6rliqjlpbPlo7Agwrcg5pmT552/IiwKICAgICAgICAgICAgICAgICJ6aC1DTi1YaWFveWFuTmV1cmFsIiB0byAi6Ieq5Yqo5aWz5aOwIMK3IOaZk+minCIsCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb3poZW5OZXVyYWwiIHRvICLoh6rliqjlpbPlo7Agwrcg5pmT55SEIiwKICAgICAgICAgICAgKSwKICAgICAgICAgICAga2V5LAogICAgICAgICkKCiAgICAgICAgZnVuIHVua25vd25DaGFyYWN0ZXIoa2V5OiBTdHJpbmcpOiBSZWFkQWxvdWRWb2ljZSA9IHN0YWJsZVBpY2soCiAgICAgICAgICAgIGxpc3RPZigKICAgICAgICAgICAgICAgICJ6aC1DTi1ZdW54aU5ldXJhbCIgdG8gIuiHquWKqOinkuiJsiDCtyDkupHluIwiLAogICAgICAgICAgICAgICAgInpoLUNOLVl1bmppZU5ldXJhbCIgdG8gIuiHquWKqOinkuiJsiDCtyDkupHmnbAiLAogICAgICAgICAgICAgICAgInpoLUNOLVhpYW94aWFvTmV1cmFsIiB0byAi6Ieq5Yqo6KeS6ImyIMK3IOaZk+aZkyIsCiAgICAgICAgICAgICAgICAiemgtQ04tWGlhb2hhbk5ldXJhbCIgdG8gIuiHquWKqOinkuiJsiDCtyDmmZPmtrUiLAogICAgICAgICAgICApLAogICAgICAgICAgICBrZXksCiAgICAgICAgKQoKICAgICAgICBmdW4gZm9yUm9sZShyb2xlOiBTdHJpbmcsIGtleTogU3RyaW5nKTogUmVhZEFsb3VkVm9pY2U/ID0gd2hlbiAocm9sZSkgewogICAgICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfTUFMRV9MRUFEIC0+CiAgICAgICAgICAgICAgICBlZGdlVm9pY2UoInpoLUNOLVl1bnhpTmV1cmFsIiwgIuiHquWKqOeUt+S4uyDCtyDkupHluIwiKQoKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX0ZFTUFMRV9MRUFEIC0+CiAgICAgICAgICAgICAgICBlZGdlVm9pY2UoInpoLUNOLVhpYW94aWFvTmV1cmFsIiwgIuiHquWKqOWls+S4uyDCtyDmmZPmmZMiKQoKICAgICAgICAgICAgQm9va1ZvaWNlQmluZGluZy5TVUJKRUNUX01BTEVfU1VQUE9SVElORyAtPiBtYWxlRmFsbGJhY2soa2V5KQogICAgICAgICAgICBCb29rVm9pY2VCaW5kaW5nLlNVQkpFQ1RfRkVNQUxFX1NVUFBPUlRJTkcgLT4gZmVtYWxlRmFsbGJhY2soa2V5KQogICAgICAgICAgICBlbHNlIC0+IG51bGwKICAgICAgICB9CgogICAgICAgIHByaXZhdGUgZnVuIHN0YWJsZVBpY2soCiAgICAgICAgICAgIHBvb2w6IExpc3Q8UGFpcjxTdHJpbmcsIFN0cmluZz4+LAogICAgICAgICAgICBrZXk6IFN0cmluZywKICAgICAgICApOiBSZWFkQWxvdWRWb2ljZSB7CiAgICAgICAgICAgIHZhbCBpdGVtID0gcG9vbFtNYXRoLmZsb29yTW9kKGtleS5oYXNoQ29kZSgpLCBwb29sLnNpemUpXQogICAgICAgICAgICByZXR1cm4gZWRnZVZvaWNlKGl0ZW0uZmlyc3QsIGl0ZW0uc2Vjb25kKQogICAgICAgIH0KCiAgICAgICAgcHJpdmF0ZSBmdW4gZWRnZVZvaWNlKAogICAgICAgICAgICBzcGVha2VySWQ6IFN0cmluZywKICAgICAgICAgICAgZGlzcGxheU5hbWU6IFN0cmluZywKICAgICAgICApOiBSZWFkQWxvdWRWb2ljZSA9IFJlYWRBbG91ZFZvaWNlKAogICAgICAgICAgICBpZCA9ICJhdXRvLWVkZ2Utc3lzdGVtOiRzcGVha2VySWQiLAogICAgICAgICAgICBlbmdpbmVUeXBlID0gUmVhZEFsb3VkVm9pY2UuRU5HSU5FX1NZU1RFTSwKICAgICAgICAgICAgZW5naW5lSWQgPSBFREdFX0VOR0lORV9QQUNLQUdFLAogICAgICAgICAgICBzcGVha2VySWQgPSBzcGVha2VySWQsCiAgICAgICAgICAgIGRpc3BsYXlOYW1lID0gZGlzcGxheU5hbWUsCiAgICAgICAgICAgIG1hbmFnZWRCeSA9IFJlYWRBbG91ZFZvaWNlLk1BTkFHRURfQllfVVNFUiwKICAgICAgICAgICAgZW5hYmxlZCA9IHRydWUsCiAgICAgICAgICAgIGF2YWlsYWJsZSA9IHRydWUsCiAgICAgICAgKQoKICAgICAgICBjb21wYW5pb24gb2JqZWN0IHsKICAgICAgICAgICAgcHJpdmF0ZSBjb25zdCB2YWwgRURHRV9FTkdJTkVfUEFDS0FHRSA9ICJ0b3AuaW5pdHNub3cuZWRnZV90dHNfYW5kcm9pZCIKICAgICAgICB9CiAgICB9Cn0K' | base64 -d > app/src/main/java/io/legado/app/domain/usecase/BuildSpeechPlanUseCase.kt
+
+      - name: 默认倍速改为1.3倍
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # 新安装默认：关闭“跟随系统”，语速值 8 => (8+5)/10 = 1.3x
+          p = Path("app/src/main/java/io/legado/app/domain/model/settings/ReadAloudSettings.kt")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace("val ttsFollowSys: Boolean = true,", "val ttsFollowSys: Boolean = false,")
+          s = s.replace("val ttsSpeechRate: Int = 5,", "val ttsSpeechRate: Int = 8,")
+          p.write_text(s, encoding="utf-8")
+
+          p = Path("app/src/main/java/io/legado/app/data/repository/ReadAloudSettingsRepository.kt")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace("compatDsValue(ReadAloudKeys.TtsFollowSys, true)", "compatDsValue(ReadAloudKeys.TtsFollowSys, false)")
+          s = s.replace("compatDsValue(ReadAloudKeys.TtsSpeechRate, 5)", "compatDsValue(ReadAloudKeys.TtsSpeechRate, 8)")
+          p.write_text(s, encoding="utf-8")
+
+          # 兼容覆盖安装：若旧数据仍处于“跟随系统”，本定制版也按1.3x播放；
+          # 一旦用户在界面关闭跟随系统并调整速度，就按用户设置。
+          p = Path("app/src/main/java/io/legado/app/service/TTSReadAloudService.kt")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace(
+              'val globalRate = if (ReadConfig.ttsFollowSys) {\n            1f\n        } else {',
+              'val globalRate = if (ReadConfig.ttsFollowSys) {\n            1.3f\n        } else {'
+          )
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: 改成独立安装名称
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("app/build.gradle.kts")
+          s = p.read_text(encoding="utf-8")
+          s = s.replace('manifestPlaceholders["app_name"] = "@string/app_name"', 'manifestPlaceholders["app_name"] = "阅读 Vox 自动配音 1.3x"')
+          p.write_text(s, encoding="utf-8")
+          PY
+
+      - name: 清理 CI 不稳定镜像源
+        shell: bash
+        run: |
+          sed -i '/maven.aliyun.com/d' settings.gradle
+
+      - name: 构建可直接安装 APK
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleAppDebug -PenableAbiSplits=false --no-daemon --no-configuration-cache
+        env:
+          COMMIT_NUMBER: ${{ github.run_number }}
+          APP_VERSION_NAME: auto-voice-13x-${{ github.run_number }}
+
+      - name: 整理 APK
+        shell: bash
+        run: |
+          mkdir -p out
+          APK=$(find app/build/outputs/apk/app/debug -maxdepth 1 -name "*.apk" | head -n 1)
+          cp "$APK" "out/阅读Vox-全小说自动多人配音版-1.3倍.apk"
+          ls -lh out
+
+      - name: 上传成品
+        uses: actions/upload-artifact@v4
+        with:
+          name: 阅读Vox-全小说自动多人配音版-1.3倍
+          path: out/阅读Vox-全小说自动多人配音版-1.3倍.apk
+          if-no-files-found: error
