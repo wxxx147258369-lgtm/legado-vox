@@ -14,6 +14,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.domain.model.readaloud.ReadAloudPlaybackCursor
 import io.legado.app.domain.model.readaloud.ReadAloudVoice
 import io.legado.app.domain.model.readaloud.SpeechEngineRoute
+import io.legado.app.domain.model.readaloud.SpeechRoleType
 import io.legado.app.domain.model.readaloud.SpeechVoiceRouter
 import io.legado.app.domain.model.readaloud.SystemTtsVoiceConfig
 import io.legado.app.help.MediaHelp
@@ -56,6 +57,38 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     private var defaultVoiceName = ""
     private var initGeneration = 0
     private val TAG = "TTSReadAloudService"
+
+    private companion object {
+        const val EDGE_TTS_PACKAGE = "top.initsnow.edge_tts_android"
+
+        val NARRATOR_VOICE_PREFERENCES = listOf(
+            "zh-CN-XiaoxiaoNeural",
+            "zh-CN-YunxiNeural",
+            "zh-CN-XiaoyiNeural",
+        )
+
+        val FEMALE_VOICE_PREFERENCES = listOf(
+            "zh-CN-XiaoyiNeural",
+            "zh-CN-XiaoxiaoNeural",
+            "zh-CN-XiaohanNeural",
+            "zh-CN-XiaomengNeural",
+            "zh-CN-XiaomoNeural",
+            "zh-CN-XiaoruiNeural",
+            "zh-CN-XiaoxuanNeural",
+            "zh-CN-XiaoyanNeural",
+            "zh-CN-XiaozhenNeural",
+        )
+
+        val MALE_VOICE_PREFERENCES = listOf(
+            "zh-CN-YunxiNeural",
+            "zh-CN-YunyangNeural",
+            "zh-CN-YunjianNeural",
+            "zh-CN-YunfengNeural",
+            "zh-CN-YunhaoNeural",
+            "zh-CN-YunyeNeural",
+            "zh-CN-YunzeNeural",
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -238,8 +271,9 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     }
 
     private fun systemVoiceForCurrentCue(): ReadAloudVoice {
-        val configured = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine)
+        val configuredValue = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine)
             .getOrNull()?.value.orEmpty()
+        val configured = preferredMultiSpeakerEngine(configuredValue)
         val fallback = ReadAloudVoice(
             id = "runtime-system:$configured",
             engineType = ReadAloudVoice.ENGINE_SYSTEM,
@@ -248,15 +282,42 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
             displayName = configured,
         )
         val cue = playbackQueue.cues.getOrNull(nowSpeak) ?: return fallback
-        return SpeechVoiceRouter.route(
+        val routed = SpeechVoiceRouter.route(
             cue = cue,
             supportedEngineTypes = setOf(ReadAloudVoice.ENGINE_SYSTEM),
             defaultRoute = SpeechEngineRoute(ReadAloudVoice.ENGINE_SYSTEM, configured),
         ).voice ?: fallback
+        return if (routed.engineId.isBlank() && configured.isNotBlank()) {
+            routed.copy(engineId = configured)
+        } else {
+            routed
+        }
+    }
+
+    /**
+     * Zero-config multi-speaker mode:
+     * if no concrete system engine was chosen, automatically prefer Edge TTS when installed.
+     * Explicit user engine/voice choices still win.
+     */
+    private fun preferredMultiSpeakerEngine(configured: String): String {
+        if (configured.isNotBlank() || !ReadConfig.useMultiSpeaker) return configured
+        val engines = textToSpeech?.engines.orEmpty()
+        return engines.firstOrNull {
+            it.name.equals(EDGE_TTS_PACKAGE, ignoreCase = true)
+        }?.name ?: engines.firstOrNull {
+            it.name.contains("edge_tts", ignoreCase = true) ||
+                it.label.toString().contains("Edge TTS", ignoreCase = true)
+        }?.name.orEmpty()
     }
 
     private fun applyVoice(voiceName: String) {
-        val requestedName = voiceName.ifBlank { defaultVoiceName }
+        val requestedName = voiceName.ifBlank {
+            if (ReadConfig.useMultiSpeaker) {
+                autoVoiceNameForCurrentCue().ifBlank { defaultVoiceName }
+            } else {
+                defaultVoiceName
+            }
+        }
         if (requestedName == activeVoiceName) return
         val tts = textToSpeech ?: return
         val voice = tts.voices.orEmpty().firstOrNull { it.name == requestedName }
@@ -266,9 +327,82 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         }
         if (tts.setVoice(voice) == TextToSpeech.SUCCESS) {
             activeVoiceName = requestedName
+            AppLog.putDebug("多人朗读自动音色: $requestedName")
         } else {
             AppLog.putDebug("系统 TTS 音色切换失败: $requestedName")
         }
+    }
+
+    /**
+     * Automatically chooses Chinese voices per cue.
+     * Narration stays stable; characters are deterministically spread across voices.
+     * If character metadata has a gender, male/female pools are preferred.
+     */
+    private fun autoVoiceNameForCurrentCue(): String {
+        val tts = textToSpeech ?: return ""
+        val cue = playbackQueue.cues.getOrNull(nowSpeak) ?: return ""
+        val allVoices = tts.voices.orEmpty()
+        if (allVoices.isEmpty()) return ""
+
+        val chineseVoices = allVoices.filter { voice ->
+            voice.locale.language.equals("zh", ignoreCase = true) ||
+                voice.locale.toLanguageTag().startsWith("zh", ignoreCase = true) ||
+                voice.name.startsWith("zh-", ignoreCase = true)
+        }
+        val available = if (chineseVoices.isNotEmpty()) chineseVoices else allVoices.toList()
+
+        fun orderedPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
+            val preferred = preferredNames.mapNotNull { preferredName ->
+                available.firstOrNull { voice ->
+                    voice.name.equals(preferredName, ignoreCase = true) ||
+                        voice.name.contains(preferredName, ignoreCase = true)
+                }
+            }
+            val remainder = available
+                .filterNot { voice -> preferred.any { it.name == voice.name } }
+                .sortedBy { it.name }
+            return (preferred + remainder).distinctBy { it.name }
+        }
+
+        val narratorPool = orderedPool(NARRATOR_VOICE_PREFERENCES)
+        val femalePool = orderedPool(FEMALE_VOICE_PREFERENCES)
+        val malePool = orderedPool(MALE_VOICE_PREFERENCES)
+
+        if (cue.roleType == SpeechRoleType.Narrator) {
+            return narratorPool.firstOrNull()?.name.orEmpty()
+        }
+
+        val performance = cue.characterPerformance
+        val inferredGender = when (performance?.voiceGender?.lowercase()) {
+            "female" -> "female"
+            "male" -> "male"
+            else -> when (performance?.role) {
+                "female_lead", "female_supporting" -> "female"
+                "male_lead", "male_supporting" -> "male"
+                else -> ""
+            }
+        }
+
+        val pool = when (inferredGender) {
+            "female" -> femalePool
+            "male" -> malePool
+            else -> {
+                val narratorName = narratorPool.firstOrNull()?.name
+                available.filterNot { it.name == narratorName }
+                    .ifEmpty { available }
+                    .sortedBy { it.name }
+            }
+        }
+        if (pool.isEmpty()) return narratorPool.firstOrNull()?.name.orEmpty()
+
+        val stableKey = cue.characterId
+            ?: performance?.characterId
+            ?: when (inferredGender) {
+                "female" -> "unknown-female"
+                "male" -> "unknown-male"
+                else -> "unknown-character"
+            }
+        return pool[Math.floorMod(stableKey.hashCode(), pool.size)].name
     }
 
     private fun applyPreset(voice: ReadAloudVoice) {
