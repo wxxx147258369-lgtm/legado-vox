@@ -13,6 +13,7 @@ import io.legado.app.domain.gateway.ReadAloudSettingsGateway
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.domain.model.readaloud.ReadAloudPlaybackCursor
 import io.legado.app.domain.model.readaloud.HumanizedSpeechTuning
+import io.legado.app.domain.model.readaloud.NovelVoiceCastingRules
 import io.legado.app.domain.model.readaloud.ReadAloudVoice
 import io.legado.app.domain.model.readaloud.SpeechEngineRoute
 import io.legado.app.domain.model.readaloud.SpeechRoleType
@@ -65,11 +66,7 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     private companion object {
         const val EDGE_TTS_PACKAGE = "top.initsnow.edge_tts_android"
 
-        val NARRATOR_VOICE_PREFERENCES = listOf(
-            "zh-CN-XiaoxiaoNeural",
-            "zh-CN-YunxiNeural",
-            "zh-CN-XiaoyiNeural",
-        )
+        val NARRATOR_VOICE_PREFERENCES = NovelVoiceCastingRules.NARRATOR
 
         val FEMALE_VOICE_PREFERENCES = listOf(
             "zh-CN-XiaoyiNeural",
@@ -375,12 +372,30 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         val allVoices = tts.voices.orEmpty()
         if (allVoices.isEmpty()) return ""
 
-        val chineseVoices = allVoices.filter { voice ->
-            voice.locale.language.equals("zh", ignoreCase = true) ||
-                voice.locale.toLanguageTag().startsWith("zh", ignoreCase = true) ||
-                voice.name.startsWith("zh-", ignoreCase = true)
+        val mandarinVoices = allVoices.filter { voice ->
+            val tag = voice.locale.toLanguageTag()
+            val country = voice.locale.country
+            val blockedRegion =
+                tag.startsWith("zh-HK", ignoreCase = true) ||
+                    tag.startsWith("zh-TW", ignoreCase = true) ||
+                    tag.startsWith("zh-MO", ignoreCase = true) ||
+                    voice.name.startsWith("zh-HK-", ignoreCase = true) ||
+                    voice.name.startsWith("zh-TW-", ignoreCase = true) ||
+                    voice.name.startsWith("zh-MO-", ignoreCase = true)
+
+            !blockedRegion && (
+                voice.name.startsWith("zh-CN-", ignoreCase = true) ||
+                    tag.startsWith("zh-CN", ignoreCase = true) ||
+                    tag.startsWith("zh-Hans", ignoreCase = true) ||
+                    (
+                        voice.locale.language.equals("zh", ignoreCase = true) &&
+                            country !in setOf("HK", "TW", "MO")
+                    )
+                )
         }
-        val available = if (chineseVoices.isNotEmpty()) chineseVoices else allVoices.toList()
+        val available = mandarinVoices.ifEmpty {
+            listOfNotNull(tts.defaultVoice)
+        }
 
         fun preferredPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
             val preferred = preferredNames.mapNotNull { preferredName ->
@@ -393,24 +408,18 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         }
 
         val narratorPool = preferredPool(NARRATOR_VOICE_PREFERENCES)
-        val femalePool = preferredPool(FEMALE_VOICE_PREFERENCES)
-        val malePool = preferredPool(MALE_VOICE_PREFERENCES)
 
         if (cue.roleType == SpeechRoleType.Narrator) {
             return narratorPool.firstOrNull()?.name.orEmpty()
         }
 
         val gender = HumanizedSpeechTuning.inferredGender(playbackQueue.cues, cueIndex)
-        val pool = when (gender) {
-            "female" -> femalePool
-            "male" -> malePool
-            else -> {
-                val narratorName = narratorPool.firstOrNull()?.name
-                available.filterNot { it.name == narratorName }
-                    .ifEmpty { available }
-                    .sortedBy { it.name }
-            }
-        }
+        val preferredNames = NovelVoiceCastingRules.preferredNames(cue, gender)
+        val narratorName = narratorPool.firstOrNull()?.name
+        val pool = preferredPool(preferredNames)
+            .filterNot { it.name == narratorName }
+            .ifEmpty { preferredPool(preferredNames) }
+
         if (pool.isEmpty()) return narratorPool.firstOrNull()?.name.orEmpty()
 
         val key = HumanizedSpeechTuning.stableSpeakerKey(playbackQueue.cues, cueIndex)

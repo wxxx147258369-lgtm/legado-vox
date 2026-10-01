@@ -99,7 +99,20 @@ object HumanizedSpeechTuning {
         val blockSeed = cues.getOrNull(blockStart)?.chapterStart ?: cue.chapterStart
         if (cue.roleType == SpeechRoleType.Thought) return "thought:$blockSeed"
 
-        val turn = cues.subList(blockStart, index + 1).count {
+        var turnIndex = index
+        while (turnIndex > blockStart) {
+            val previous = cues.getOrNull(turnIndex - 1) ?: break
+            val current = cues.getOrNull(turnIndex) ?: break
+            val continuousCharacterRun =
+                previous.roleType == SpeechRoleType.Character &&
+                    current.roleType == SpeechRoleType.Character &&
+                    previous.paragraphIndex == current.paragraphIndex &&
+                    previous.chapterEnd == current.chapterStart
+            if (!continuousCharacterRun) break
+            turnIndex--
+        }
+
+        val turn = cues.subList(blockStart, turnIndex + 1).count {
             it.roleType == SpeechRoleType.Character || it.roleType == SpeechRoleType.Thought
         }
         val slot = if ((turn - 1).coerceAtLeast(0) % 2 == 0) "A" else "B"
@@ -120,7 +133,7 @@ object HumanizedSpeechTuning {
 
         var value = when {
             sameSpeaker && previous.paragraphIndex == current.paragraphIndex ->
-                minOf(baseMs, 30L)
+                minOf(baseMs, 20L)
             previous.roleType == SpeechRoleType.Narrator &&
                 current.roleType == SpeechRoleType.Narrator ->
                 minOf(baseMs, 50L)
