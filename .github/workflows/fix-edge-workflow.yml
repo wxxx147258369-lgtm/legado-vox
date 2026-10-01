@@ -1,0 +1,47 @@
+name: Fix Edge Multi-speaker Workflow Location
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/fix-edge-workflow.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Move uploaded workflow into correct folder
+        shell: bash
+        run: |
+          set -e
+          SRC="upgrade-edge-multispeaker.yml"
+          DST=".github/workflows/upgrade-edge-multispeaker.yml"
+
+          if [ ! -f "$SRC" ]; then
+            echo "Root workflow file not found: $SRC"
+            exit 1
+          fi
+
+          mkdir -p .github/workflows
+          cp "$SRC" "$DST"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "$DST"
+
+          if git diff --cached --quiet; then
+            echo "Workflow already exists in the correct location."
+            exit 0
+          fi
+
+          git commit -m "fix(actions): move Edge multi-speaker workflow into workflows"
+          git push origin HEAD:main
