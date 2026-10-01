@@ -15,8 +15,8 @@ object NovelVoiceCastingRules {
     )
 
     val MALE = listOf(
-        "zh-CN-YunxiNeural",
-        "zh-CN-YunhaoNeural",
+        "zh-CN-YunjianNeural",
+        "zh-CN-YunfengNeural",
     )
 
     val FEMALE = listOf(

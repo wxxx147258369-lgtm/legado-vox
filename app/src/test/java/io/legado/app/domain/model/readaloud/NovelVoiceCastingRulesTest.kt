@@ -17,7 +17,7 @@ class NovelVoiceCastingRulesTest {
     @Test
     fun `all male roles collapse to the same stable male voice`() {
         assertEquals(
-            "zh-CN-YunxiNeural",
+            "zh-CN-YunjianNeural",
             NovelVoiceCastingRules.preferredNames(cue(), "male").first(),
         )
     }
