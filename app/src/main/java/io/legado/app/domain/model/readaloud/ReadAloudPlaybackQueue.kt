@@ -72,7 +72,7 @@ class ReadAloudPlaybackQueue private constructor(
     companion object {
         val Empty = ReadAloudPlaybackQueue(emptyList())
 
-        fun from(plan: List<SpeechPlanItem>): ReadAloudPlaybackQueue {
+        fun from(plan: List<SpeechPlanItem>, smoothMode: Boolean = false): ReadAloudPlaybackQueue {
             if (plan.isEmpty()) return Empty
             val rawCues = plan.map { item ->
                 val segment = item.segment
@@ -96,7 +96,7 @@ class ReadAloudPlaybackQueue private constructor(
             val cues = buildList {
                 rawCues.forEach { cue ->
                     val previous = lastOrNull()
-                    if (previous != null && canMerge(previous, cue)) {
+                    if (previous != null && canMerge(previous, cue, smoothMode)) {
                         removeAt(lastIndex)
                         add(
                             previous.copy(
@@ -115,8 +115,15 @@ class ReadAloudPlaybackQueue private constructor(
         private fun canMerge(
             left: ReadAloudPlaybackCue,
             right: ReadAloudPlaybackCue,
+            smoothMode: Boolean,
         ): Boolean {
             if (left.chapterEnd != right.chapterStart) return false
+
+            if (smoothMode) {
+                if (left.text.length + right.text.length > 320) return false
+                return smoothVoiceClass(left) == smoothVoiceClass(right)
+            }
+
             if (left.paragraphIndex != right.paragraphIndex) return false
             if (left.roleType != right.roleType) return false
             if (left.emotion != right.emotion) return false
@@ -131,6 +138,16 @@ class ReadAloudPlaybackQueue private constructor(
                     leftId != null && leftId == rightId
                 }
                 SpeechRoleType.Unknown -> false
+            }
+        }
+
+        private fun smoothVoiceClass(cue: ReadAloudPlaybackCue): String {
+            if (cue.roleType == SpeechRoleType.Narrator) return "narrator"
+            val profile = cue.characterPerformance
+            return when {
+                profile?.voiceGender.equals("female", ignoreCase = true) -> "female"
+                profile?.role in setOf("female_lead", "female_supporting") -> "female"
+                else -> "male"
             }
         }
 

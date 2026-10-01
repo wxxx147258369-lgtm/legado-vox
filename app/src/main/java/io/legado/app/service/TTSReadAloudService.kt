@@ -42,6 +42,7 @@ import org.koin.core.component.inject
 class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
 
     override val useSpeechPlaybackQueue: Boolean = true
+    override val preferSmoothSpeechPlaybackQueue: Boolean = true
 
     private val readAloudSettingsGateway: ReadAloudSettingsGateway by inject()
     @Volatile
@@ -61,34 +62,12 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     private var activeSpeechRate = Float.NaN
     private var activePitch = Float.NaN
     private var initGeneration = 0
+    private val characterGenderCache = mutableMapOf<String, String>()
     private val TAG = "TTSReadAloudService"
 
     private companion object {
         const val EDGE_TTS_PACKAGE = "top.initsnow.edge_tts_android"
-
         val NARRATOR_VOICE_PREFERENCES = NovelVoiceCastingRules.NARRATOR
-
-        val FEMALE_VOICE_PREFERENCES = listOf(
-            "zh-CN-XiaoyiNeural",
-            "zh-CN-XiaoxiaoNeural",
-            "zh-CN-XiaohanNeural",
-            "zh-CN-XiaomengNeural",
-            "zh-CN-XiaomoNeural",
-            "zh-CN-XiaoruiNeural",
-            "zh-CN-XiaoxuanNeural",
-            "zh-CN-XiaoyanNeural",
-            "zh-CN-XiaozhenNeural",
-        )
-
-        val MALE_VOICE_PREFERENCES = listOf(
-            "zh-CN-YunxiNeural",
-            "zh-CN-YunyangNeural",
-            "zh-CN-YunjianNeural",
-            "zh-CN-YunfengNeural",
-            "zh-CN-YunhaoNeural",
-            "zh-CN-YunyeNeural",
-            "zh-CN-YunzeNeural",
-        )
     }
 
     override fun onCreate() {
@@ -292,27 +271,13 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         val configuredValue = GSON.fromJsonObject<SelectItem<String>>(ReadAloud.ttsEngine)
             .getOrNull()?.value.orEmpty()
         val configured = preferredMultiSpeakerEngine(configuredValue)
-        val fallback = ReadAloudVoice(
-            id = "runtime-system:$configured",
+        return ReadAloudVoice(
+            id = "runtime-smooth-system:$configured",
             engineType = ReadAloudVoice.ENGINE_SYSTEM,
             engineId = configured,
             speakerId = "",
             displayName = configured,
         )
-        val cue = playbackQueue.cues.getOrNull(nowSpeak) ?: return fallback
-        val routed = SpeechVoiceRouter.route(
-            cue = cue,
-            supportedEngineTypes = setOf(ReadAloudVoice.ENGINE_SYSTEM),
-            defaultRoute = SpeechEngineRoute(ReadAloudVoice.ENGINE_SYSTEM, configured),
-        ).voice ?: fallback
-        val routedEngine = routed.engineId
-            .takeUnless { it.equals(disabledEngine, ignoreCase = true) }
-            .orEmpty()
-        return when {
-            routedEngine.isNotBlank() -> routed.copy(engineId = routedEngine)
-            configured.isNotBlank() -> routed.copy(engineId = configured)
-            else -> routed.copy(engineId = "")
-        }
     }
 
     /**
@@ -372,7 +337,7 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         val allVoices = tts.voices.orEmpty()
         if (allVoices.isEmpty()) return ""
 
-        val mandarinVoices = allVoices.filter { voice ->
+        val available = allVoices.filter { voice ->
             val tag = voice.locale.toLanguageTag()
             val country = voice.locale.country
             val blockedRegion =
@@ -392,62 +357,51 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
                             country !in setOf("HK", "TW", "MO")
                     )
                 )
-        }
-        val available = mandarinVoices.ifEmpty {
-            listOfNotNull(tts.defaultVoice)
-        }
+        }.ifEmpty { listOfNotNull(tts.defaultVoice) }
 
-        fun preferredPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
-            val preferred = preferredNames.mapNotNull { preferredName ->
+        fun firstAvailable(preferred: List<String>): String {
+            return preferred.firstNotNullOfOrNull { preferredName ->
                 available.firstOrNull { voice ->
                     voice.name.equals(preferredName, ignoreCase = true) ||
                         voice.name.contains(preferredName, ignoreCase = true)
-                }
-            }.distinctBy { it.name }
-            return if (preferred.isNotEmpty()) preferred else available.sortedBy { it.name }
+                }?.name
+            } ?: available.firstOrNull()?.name.orEmpty()
         }
-
-        val narratorPool = preferredPool(NARRATOR_VOICE_PREFERENCES)
 
         if (cue.roleType == SpeechRoleType.Narrator) {
-            return narratorPool.firstOrNull()?.name.orEmpty()
+            return firstAvailable(NovelVoiceCastingRules.NARRATOR)
         }
 
-        val gender = HumanizedSpeechTuning.inferredGender(playbackQueue.cues, cueIndex)
-        val preferredNames = NovelVoiceCastingRules.preferredNames(cue, gender)
-        val narratorName = narratorPool.firstOrNull()?.name
-        val pool = preferredPool(preferredNames)
-            .filterNot { it.name == narratorName }
-            .ifEmpty { preferredPool(preferredNames) }
+        val key = cue.characterId
+            ?.takeIf(String::isNotBlank)
+            ?: cue.characterPerformance?.characterId?.takeIf(String::isNotBlank)
 
-        if (pool.isEmpty()) return narratorPool.firstOrNull()?.name.orEmpty()
+        val cached = key?.let(characterGenderCache::get)
+        val gender = cached ?: HumanizedSpeechTuning
+            .inferredGender(playbackQueue.cues, cueIndex)
+            .takeIf { it == "male" || it == "female" }
+            ?: when (cue.characterPerformance?.role) {
+                "female_lead", "female_supporting" -> "female"
+                else -> "male"
+            }
 
-        val key = HumanizedSpeechTuning.stableSpeakerKey(playbackQueue.cues, cueIndex)
-        return pool[Math.floorMod(key.hashCode(), pool.size)].name
+        if (key != null) characterGenderCache[key] = gender
+        return if (gender == "female") {
+            firstAvailable(NovelVoiceCastingRules.FEMALE)
+        } else {
+            firstAvailable(NovelVoiceCastingRules.MALE)
+        }
     }
 
     private fun applyPreset(voice: ReadAloudVoice) {
-        val config = runCatching {
-            GSON.fromJson(voice.traitsJson, SystemTtsVoiceConfig::class.java)
-        }.getOrNull() ?: SystemTtsVoiceConfig()
-        val globalRate = if (ReadConfig.ttsFollowSys) {
+        // Smooth Mode: keep one global rate/pitch. Emotion and role analysis no longer mutate
+        // TTS parameters between tiny cues; AI is used only for identity/gender resolution.
+        val finalRate = if (ReadConfig.ttsFollowSys) {
             1f
         } else {
             (speechRateSetting + 5) / 10f
         }
-        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
-        val tuning = playbackQueue.cues.getOrNull(cueIndex)
-            ?.let(HumanizedSpeechTuning::forCue)
-        val finalRate = (
-            (config.speechRate ?: globalRate) *
-                (config.rateMultiplier ?: 1f) *
-                (tuning?.rateMultiplier ?: 1f)
-            ).coerceIn(0.78f, 2.10f)
-        val finalPitch = (
-            (config.pitch ?: 1f) *
-                (config.pitchMultiplier ?: 1f) *
-                (tuning?.pitchMultiplier ?: 1f)
-            ).coerceIn(0.86f, 1.14f)
+        val finalPitch = 1f
 
         textToSpeech?.apply {
             if (activeSpeechRate.isNaN() || kotlin.math.abs(activeSpeechRate - finalRate) >= 0.015f) {
@@ -462,10 +416,9 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     }
 
     private fun dynamicCueIntervalMs(): Long {
-        val base = ReadConfig.ttsParagraphInterval.toLong().coerceAtLeast(0L)
-        if (!hasSpeechPlaybackQueue || base <= 0L) return base
-        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
-        return HumanizedSpeechTuning.pauseBeforeMs(playbackQueue.cues, cueIndex, base)
+        // Smooth Mode deliberately removes artificial gaps between speech cues.
+        if (hasSpeechPlaybackQueue) return 0L
+        return ReadConfig.ttsParagraphInterval.toLong().coerceAtLeast(0L)
     }
 
     private fun shouldSkipTtsNoise(text: String): Boolean {

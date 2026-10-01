@@ -173,6 +173,7 @@ abstract class BaseReadAloudService : BaseService(),
     var readAloudByPage = false
         private set
     protected open val useSpeechPlaybackQueue: Boolean = false
+    protected open val preferSmoothSpeechPlaybackQueue: Boolean = false
     protected val hasSpeechPlaybackQueue: Boolean
         get() = useSpeechPlaybackQueue && !playbackQueue.isEmpty
 
@@ -303,7 +304,7 @@ abstract class BaseReadAloudService : BaseService(),
             )
             if (generation != prepareReadAloudGeneration) return@execute
             val preparedPlaybackQueue = runCatching {
-                ReadAloudPlaybackQueue.from(preparedSpeechPlan)
+                ReadAloudPlaybackQueue.from(preparedSpeechPlan, smoothMode = preferSmoothSpeechPlaybackQueue)
             }.onFailure {
                 AppLog.put("创建多角色播放队列失败，使用原朗读方式\n${it.localizedMessage}", it)
             }.getOrDefault(ReadAloudPlaybackQueue.Empty)
