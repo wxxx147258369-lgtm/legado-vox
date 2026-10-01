@@ -33,7 +33,13 @@ object AiSpeechAtomizer {
             }
             if (char in SENTENCE_ENDS) {
                 var end = index + 1
-                while (end < paragraph.text.length && paragraph.text[end] in ALL_CLOSE_QUOTES) {
+                while (
+                    end < paragraph.text.length &&
+                    (
+                        paragraph.text[end] in SENTENCE_ENDS ||
+                        paragraph.text[end] in ALL_CLOSE_QUOTES
+                    )
+                ) {
                     if (paragraph.text[end] == '"') straightDoubleOpen = false
                     if (paragraph.text[end] == '\'') straightSingleOpen = false
                     end++
@@ -61,5 +67,5 @@ object AiSpeechAtomizer {
     private val OPEN_QUOTES = setOf('“', '‘', '「', '『')
     private val CLOSE_QUOTES = setOf('”', '’', '」', '』')
     private val ALL_CLOSE_QUOTES = CLOSE_QUOTES + setOf('"', '\'')
-    private val SENTENCE_ENDS = setOf('。', '！', '？', '!', '?', '；', ';')
+    private val SENTENCE_ENDS = setOf('。', '！', '？', '!', '?', '…')
 }

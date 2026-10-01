@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.map
 class ReadAloudSettingsRepository : ReadAloudSettingsGateway {
 
     override val currentSettings: ReadAloudSettings
-        get() = AppConfigStore.preferences.toReadAloudSettings()
+        get() {
+            ensureV5FinalDefaultsMigrated()
+            return AppConfigStore.preferences.toReadAloudSettings()
+        }
 
     override val settings: Flow<ReadAloudSettings> = AppConfigStore.preferencesFlow
         .map { preferences ->
@@ -38,6 +41,38 @@ class ReadAloudSettingsRepository : ReadAloudSettingsGateway {
         const val DEFAULT_INTERFACE_CLASSIC = "classic"
         const val DEFAULT_INTERFACE_PLAYER = "player"
         val AVAILABLE_INTERFACES = setOf(DEFAULT_INTERFACE_CLASSIC, DEFAULT_INTERFACE_PLAYER)
+
+        private const val V5_FINAL_MIGRATION_KEY = "v5FinalStableMigrationVersion"
+        private const val V5_FINAL_MIGRATION_VERSION = 1
+    }
+
+    private fun ensureV5FinalDefaultsMigrated() {
+        if (
+            (AppConfigStore.getInt(V5_FINAL_MIGRATION_KEY) ?: 0) >=
+            V5_FINAL_MIGRATION_VERSION
+        ) return
+
+        val storedFollowSystem = AppConfigStore.getBoolean(PreferKey.ttsFollowSys)
+        val storedRate = AppConfigStore.getInt(PreferKey.ttsSpeechRate)
+        val storedAnalysisMode = AppConfigStore.getString(PreferKey.speechAnalysisMode)
+        val storedMultiSpeaker = AppConfigStore.getBoolean(PreferKey.useMultiSpeaker)
+
+        val legacyStockProfile =
+            (storedFollowSystem == null || storedFollowSystem == true) &&
+                (storedRate == null || storedRate == 5) &&
+                (storedAnalysisMode == null || storedAnalysisMode == "rule")
+
+        val updates = linkedMapOf<String, Any?>()
+        if (legacyStockProfile) {
+            updates[PreferKey.ttsFollowSys] = false
+            updates[PreferKey.ttsSpeechRate] = 8
+            updates[PreferKey.speechAnalysisMode] = "rule_with_ai"
+        }
+        if (storedMultiSpeaker == null) {
+            updates[PreferKey.useMultiSpeaker] = true
+        }
+        updates[V5_FINAL_MIGRATION_KEY] = V5_FINAL_MIGRATION_VERSION
+        AppConfigStore.putAll(updates)
     }
 }
 
@@ -61,9 +96,9 @@ internal fun Preferences.toReadAloudSettings(): ReadAloudSettings = ReadAloudSet
         compatDsValue(ReadAloudKeys.SystemMediaControlCompatibilityChange, true),
     streamReadAloudAudio = compatDsValue(ReadAloudKeys.StreamReadAloudAudio, false),
     ttsTimer = PlaybackTimer.normalize(compatDsValue(ReadAloudKeys.TtsTimer, 0)),
-    ttsFollowSys = compatDsValue(ReadAloudKeys.TtsFollowSys, true),
-    ttsSpeechRate = compatDsValue(ReadAloudKeys.TtsSpeechRate, 5),
-    speechAnalysisMode = compatDsValue(ReadAloudKeys.SpeechAnalysisMode, "rule"),
+    ttsFollowSys = compatDsValue(ReadAloudKeys.TtsFollowSys, false),
+    ttsSpeechRate = compatDsValue(ReadAloudKeys.TtsSpeechRate, 8),
+    speechAnalysisMode = compatDsValue(ReadAloudKeys.SpeechAnalysisMode, "rule_with_ai"),
     useMultiSpeaker = compatDsValue(ReadAloudKeys.UseMultiSpeaker, true),
     defaultInterface = compatDsValue(
         ReadAloudKeys.DefaultInterface,

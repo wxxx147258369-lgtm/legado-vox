@@ -4,6 +4,7 @@ import io.legado.app.domain.model.readaloud.CanonicalSpeechParagraph
 import io.legado.app.domain.model.readaloud.SpeechPlanItem
 import io.legado.app.domain.model.readaloud.SpeechAnalysisMode
 import io.legado.app.help.readaloud.segment.RuleBasedSpeechSegmenter
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Builds the persisted speech plan used by a read-aloud session.
@@ -53,13 +54,15 @@ class PrepareChapterSpeechPlanUseCase(
         val resolved = if (effectiveMode == SpeechAnalysisMode.Rule) {
             locallyResolved
         } else {
-            runCatching {
-                refineSpeechWithAi(
-                    analysisResult = locallyResolved,
-                    paragraphs = paragraphs,
-                    mode = effectiveMode,
-                )
-            }.getOrDefault(locallyResolved)
+            withTimeoutOrNull(2_500L) {
+                runCatching {
+                    refineSpeechWithAi(
+                        analysisResult = locallyResolved,
+                        paragraphs = paragraphs,
+                        mode = effectiveMode,
+                    )
+                }.getOrNull()
+            } ?: locallyResolved
         }
         return buildSpeechPlan(
             bookUrl = bookUrl,

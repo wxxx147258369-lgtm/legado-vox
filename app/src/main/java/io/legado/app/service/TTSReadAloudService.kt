@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.domain.gateway.ReadAloudSettingsGateway
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.domain.model.readaloud.ReadAloudPlaybackCursor
+import io.legado.app.domain.model.readaloud.HumanizedSpeechTuning
 import io.legado.app.domain.model.readaloud.ReadAloudVoice
 import io.legado.app.domain.model.readaloud.SpeechEngineRoute
 import io.legado.app.domain.model.readaloud.SpeechRoleType
@@ -43,7 +44,7 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
 
     private val readAloudSettingsGateway: ReadAloudSettingsGateway by inject()
     @Volatile
-    private var speechRateSetting: Int = 5
+    private var speechRateSetting: Int = 8
 
     private var textToSpeech: TextToSpeech? = null
     private var ttsInitFinish = false
@@ -55,6 +56,9 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
     private var activeEngine = ""
     private var activeVoiceName = ""
     private var defaultVoiceName = ""
+    private var disabledEngine = ""
+    private var activeSpeechRate = Float.NaN
+    private var activePitch = Float.NaN
     private var initGeneration = 0
     private val TAG = "TTSReadAloudService"
 
@@ -132,6 +136,8 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         ttsInitFinish = false
         activeVoiceName = ""
         defaultVoiceName = ""
+        activeSpeechRate = Float.NaN
+        activePitch = Float.NaN
         initGeneration++
     }
 
@@ -145,6 +151,18 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
                 ttsInitFinish = true
                 play()
             }
+            return
+        }
+
+        val failedEngine = activeEngine
+        if (
+            failedEngine.isNotBlank() &&
+            !failedEngine.equals(disabledEngine, ignoreCase = true)
+        ) {
+            disabledEngine = failedEngine
+            AppLog.putDebug("TTS引擎初始化失败，当前会话回退系统TTS: $failedEngine")
+            clearTTS()
+            initTts("")
         } else {
             toastOnUi(R.string.tts_init_failed)
         }
@@ -179,7 +197,7 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         
         speakJob?.cancel()
         speakJob = execute {
-            val interval = ReadConfig.ttsParagraphInterval.toLong()
+            val interval = dynamicCueIntervalMs()
             AppLog.putDebug("TTS_PLAY: nowSpeak=$nowSpeak, isDelay=$isDelay, interval=$interval")
             
             if (hasSpeechPlaybackQueue || interval > 0) {
@@ -197,8 +215,11 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
                 if (paragraphStartPos > 0) {
                     text = text.substring(paragraphStartPos)
                 }
-                if (text.matches(AppPattern.notReadAloudRegex)) {
-                    AppLog.putDebug("TTS段落全标点跳过: nowSpeak=$nowSpeak")
+                if (
+                    text.matches(AppPattern.notReadAloudRegex) ||
+                    shouldSkipTtsNoise(text)
+                ) {
+                    AppLog.putDebug("TTS段落噪声/全标点跳过: nowSpeak=$nowSpeak")
                     ttsUtteranceListener.onDone(AppConst.APP_TAG + nowSpeak)
                     return@execute
                 }
@@ -287,10 +308,13 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
             supportedEngineTypes = setOf(ReadAloudVoice.ENGINE_SYSTEM),
             defaultRoute = SpeechEngineRoute(ReadAloudVoice.ENGINE_SYSTEM, configured),
         ).voice ?: fallback
-        return if (routed.engineId.isBlank() && configured.isNotBlank()) {
-            routed.copy(engineId = configured)
-        } else {
-            routed
+        val routedEngine = routed.engineId
+            .takeUnless { it.equals(disabledEngine, ignoreCase = true) }
+            .orEmpty()
+        return when {
+            routedEngine.isNotBlank() -> routed.copy(engineId = routedEngine)
+            configured.isNotBlank() -> routed.copy(engineId = configured)
+            else -> routed.copy(engineId = "")
         }
     }
 
@@ -300,8 +324,14 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
      * Explicit user engine/voice choices still win.
      */
     private fun preferredMultiSpeakerEngine(configured: String): String {
-        if (configured.isNotBlank() || !ReadConfig.useMultiSpeaker) return configured
+        if (!ReadConfig.useMultiSpeaker) return configured
+        if (
+            configured.isNotBlank() &&
+            !configured.equals(disabledEngine, ignoreCase = true)
+        ) return configured
+
         val engines = textToSpeech?.engines.orEmpty()
+            .filterNot { it.name.equals(disabledEngine, ignoreCase = true) }
         return engines.firstOrNull {
             it.name.equals(EDGE_TTS_PACKAGE, ignoreCase = true)
         }?.name ?: engines.firstOrNull {
@@ -340,7 +370,8 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
      */
     private fun autoVoiceNameForCurrentCue(): String {
         val tts = textToSpeech ?: return ""
-        val cue = playbackQueue.cues.getOrNull(nowSpeak) ?: return ""
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val cue = playbackQueue.cues.getOrNull(cueIndex) ?: return ""
         val allVoices = tts.voices.orEmpty()
         if (allVoices.isEmpty()) return ""
 
@@ -351,39 +382,26 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         }
         val available = if (chineseVoices.isNotEmpty()) chineseVoices else allVoices.toList()
 
-        fun orderedPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
+        fun preferredPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
             val preferred = preferredNames.mapNotNull { preferredName ->
                 available.firstOrNull { voice ->
                     voice.name.equals(preferredName, ignoreCase = true) ||
                         voice.name.contains(preferredName, ignoreCase = true)
                 }
-            }
-            val remainder = available
-                .filterNot { voice -> preferred.any { it.name == voice.name } }
-                .sortedBy { it.name }
-            return (preferred + remainder).distinctBy { it.name }
+            }.distinctBy { it.name }
+            return if (preferred.isNotEmpty()) preferred else available.sortedBy { it.name }
         }
 
-        val narratorPool = orderedPool(NARRATOR_VOICE_PREFERENCES)
-        val femalePool = orderedPool(FEMALE_VOICE_PREFERENCES)
-        val malePool = orderedPool(MALE_VOICE_PREFERENCES)
+        val narratorPool = preferredPool(NARRATOR_VOICE_PREFERENCES)
+        val femalePool = preferredPool(FEMALE_VOICE_PREFERENCES)
+        val malePool = preferredPool(MALE_VOICE_PREFERENCES)
 
         if (cue.roleType == SpeechRoleType.Narrator) {
             return narratorPool.firstOrNull()?.name.orEmpty()
         }
 
-        val performance = cue.characterPerformance
-        val inferredGender = when (performance?.voiceGender?.lowercase()) {
-            "female" -> "female"
-            "male" -> "male"
-            else -> when (performance?.role) {
-                "female_lead", "female_supporting" -> "female"
-                "male_lead", "male_supporting" -> "male"
-                else -> ""
-            }
-        }
-
-        val pool = when (inferredGender) {
+        val gender = HumanizedSpeechTuning.inferredGender(playbackQueue.cues, cueIndex)
+        val pool = when (gender) {
             "female" -> femalePool
             "male" -> malePool
             else -> {
@@ -395,14 +413,8 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         }
         if (pool.isEmpty()) return narratorPool.firstOrNull()?.name.orEmpty()
 
-        val stableKey = cue.characterId
-            ?: performance?.characterId
-            ?: when (inferredGender) {
-                "female" -> "unknown-female"
-                "male" -> "unknown-male"
-                else -> "unknown-character"
-            }
-        return pool[Math.floorMod(stableKey.hashCode(), pool.size)].name
+        val key = HumanizedSpeechTuning.stableSpeakerKey(playbackQueue.cues, cueIndex)
+        return pool[Math.floorMod(key.hashCode(), pool.size)].name
     }
 
     private fun applyPreset(voice: ReadAloudVoice) {
@@ -412,12 +424,50 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         val globalRate = if (ReadConfig.ttsFollowSys) {
             1f
         } else {
-            (ReadConfig.ttsSpeechRate + 5) / 10f
+            (speechRateSetting + 5) / 10f
         }
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val tuning = playbackQueue.cues.getOrNull(cueIndex)
+            ?.let(HumanizedSpeechTuning::forCue)
+        val finalRate = (
+            (config.speechRate ?: globalRate) *
+                (config.rateMultiplier ?: 1f) *
+                (tuning?.rateMultiplier ?: 1f)
+            ).coerceIn(0.78f, 2.10f)
+        val finalPitch = (
+            (config.pitch ?: 1f) *
+                (config.pitchMultiplier ?: 1f) *
+                (tuning?.pitchMultiplier ?: 1f)
+            ).coerceIn(0.86f, 1.14f)
+
         textToSpeech?.apply {
-            setSpeechRate(config.speechRate ?: globalRate)
-            setPitch(config.pitch ?: 1f)
+            if (activeSpeechRate.isNaN() || kotlin.math.abs(activeSpeechRate - finalRate) >= 0.015f) {
+                setSpeechRate(finalRate)
+                activeSpeechRate = finalRate
+            }
+            if (activePitch.isNaN() || kotlin.math.abs(activePitch - finalPitch) >= 0.015f) {
+                setPitch(finalPitch)
+                activePitch = finalPitch
+            }
         }
+    }
+
+    private fun dynamicCueIntervalMs(): Long {
+        val base = ReadConfig.ttsParagraphInterval.toLong().coerceAtLeast(0L)
+        if (!hasSpeechPlaybackQueue || base <= 0L) return base
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        return HumanizedSpeechTuning.pauseBeforeMs(playbackQueue.cues, cueIndex, base)
+    }
+
+    private fun shouldSkipTtsNoise(text: String): Boolean {
+        val value = text.trim()
+        if (value.length > 100) return false
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val cue = playbackQueue.cues.getOrNull(cueIndex)
+        if (cue != null && cue.roleType != SpeechRoleType.Narrator) return false
+        return value.matches(
+            Regex("^(?:本章未完.*|.*最新网址.*|.*请收藏本站.*|.*手机用户请浏览.*|.*关注公众号.*|.*章节报错.*|.*加入书签.*)$")
+        )
     }
 
     override fun playStop() {
@@ -438,6 +488,7 @@ class TTSReadAloudService : BaseReadAloudService(), KoinComponent {
         } else {
             val speechRate = (speechRateSetting + 5) / 10f
             textToSpeech?.setSpeechRate(speechRate)
+            activeSpeechRate = speechRate
             if (reset && !pause) {
                 play()
             }

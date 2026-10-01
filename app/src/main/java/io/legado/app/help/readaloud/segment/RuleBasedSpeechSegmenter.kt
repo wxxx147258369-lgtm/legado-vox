@@ -12,7 +12,7 @@ import io.legado.app.domain.model.readaloud.SpeechSegmentDraft
  */
 object RuleBasedSpeechSegmenter {
 
-    const val VERSION = "rule-segmenter-v2-emotion"
+    const val VERSION = "rule-segmenter-v5-final-stable"
 
     private val quotePairs = mapOf(
         '“' to '”',
@@ -134,11 +134,26 @@ object RuleBasedSpeechSegmenter {
     }
 
     private fun quoteRole(text: String, openIndex: Int, closeIndex: Int): SpeechRoleType {
-        val contextBefore = text.substring((openIndex - 24).coerceAtLeast(0), openIndex)
+        val contextBefore = text.substring((openIndex - 32).coerceAtLeast(0), openIndex)
         if (thoughtCueRegex.containsMatchIn(contextBefore)) return SpeechRoleType.Thought
         if (closeIndex < 0) return SpeechRoleType.Character
+
         val inner = text.substring(openIndex + 1, closeIndex).trim()
-        return if (inner.length >= 6 || inner.any(sentencePunctuation::contains)) {
+        if (inner.length >= 6 || inner.any(sentencePunctuation::contains)) {
+            return SpeechRoleType.Character
+        }
+
+        val normalizedBefore = contextBefore.trimEnd('：', ':', '，', ',', ' ', '	')
+        val shortSpeechBefore = speechCueRegex.containsMatchIn(normalizedBefore)
+        val afterContext = text.substring(
+            closeIndex + 1,
+            minOf(text.length, closeIndex + 32),
+        )
+        val shortSpeechAfter = Regex(
+            "^[，,。.!！?？\\s]*(?:[\\p{IsHan}·]{1,5})?(?:说|说道|问|问道|答|答道|喊|喊道|叫|叫道|喝道|笑道|低声道|沉声道|怒道|开口道)"
+        ).containsMatchIn(afterContext)
+
+        return if (shortSpeechBefore || shortSpeechAfter) {
             SpeechRoleType.Character
         } else {
             SpeechRoleType.Narrator

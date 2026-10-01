@@ -118,10 +118,21 @@ class RefineSpeechWithAiUseCase(
         }
         if (candidates.isEmpty()) return analysisResult.segments
         val updates = linkedMapOf<String, AiSegmentDecision>()
+        val segmentIndexById = analysisResult.segments
+            .withIndex()
+            .associate { it.value.id to it.index }
+
         candidates.chunkByTextLength(MAX_CHUNK_CHARS) { it.text }.forEach { chunk ->
             val payload = mapOf(
                 "characters" to profiles.map { it.toPromptMap() },
                 "segments" to chunk.map { segment ->
+                    val sourceIndex = segmentIndexById.getValue(segment.id)
+                    fun nearby(item: ChapterSpeechSegment) = mapOf(
+                        "text" to item.text,
+                        "roleType" to item.roleType.storageValue,
+                        "characterId" to item.characterId,
+                        "characterName" to item.characterName,
+                    )
                     mapOf(
                         "segmentId" to segment.id,
                         "text" to segment.text,
@@ -129,6 +140,15 @@ class RefineSpeechWithAiUseCase(
                         "characterId" to segment.characterId,
                         "emotion" to segment.emotion,
                         "confidence" to segment.confidence,
+                        "contextBefore" to analysisResult.segments
+                            .subList(maxOf(0, sourceIndex - 2), sourceIndex)
+                            .map(::nearby),
+                        "contextAfter" to analysisResult.segments
+                            .subList(
+                                minOf(sourceIndex + 1, analysisResult.segments.size),
+                                minOf(sourceIndex + 3, analysisResult.segments.size),
+                            )
+                            .map(::nearby),
                     )
                 },
             )
@@ -382,12 +402,13 @@ class RefineSpeechWithAiUseCase(
     )
 
     companion object {
-        const val VERSION = "ai-speech-analysis-v1"
+        const val VERSION = "ai-speech-analysis-v2-context-stable"
         private const val MAX_CHUNK_CHARS = 6_000
-        private const val HYBRID_CONFIDENCE_THRESHOLD = 0.75f
+        private const val HYBRID_CONFIDENCE_THRESHOLD = 0.82f
         private const val DEFAULT_PROMPT =
             "Analyze fiction speech for text-to-speech. Distinguish narration, spoken dialogue, " +
-                "internal thought and unknown speech. Resolve speakers only from the supplied " +
-                "character IDs, infer emotion conservatively, and use null when uncertain."
+                "internal thought and unknown speech. Resolve speakers only from supplied character " +
+                "IDs. Use contextBefore/contextAfter for nearby attribution and dialogue continuity. " +
+                "Never rewrite, split, merge, or invent source text. Prefer null when evidence is weak."
     }
 }

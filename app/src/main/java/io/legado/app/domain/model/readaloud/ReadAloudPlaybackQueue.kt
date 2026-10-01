@@ -74,7 +74,7 @@ class ReadAloudPlaybackQueue private constructor(
 
         fun from(plan: List<SpeechPlanItem>): ReadAloudPlaybackQueue {
             if (plan.isEmpty()) return Empty
-            val cues = plan.map { item ->
+            val rawCues = plan.map { item ->
                 val segment = item.segment
                 ReadAloudPlaybackCue(
                     text = segment.text,
@@ -89,10 +89,59 @@ class ReadAloudPlaybackQueue private constructor(
                     characterPerformance = item.characterPerformance,
                 )
             }.sortedWith(compareBy(ReadAloudPlaybackCue::chapterStart, ReadAloudPlaybackCue::chapterEnd))
-            require(cues.zipWithNext().none { (left, right) -> left.chapterEnd > right.chapterStart }) {
+            require(rawCues.zipWithNext().none { (left, right) -> left.chapterEnd > right.chapterStart }) {
                 "Playback cues must not overlap"
             }
+
+            val cues = buildList {
+                rawCues.forEach { cue ->
+                    val previous = lastOrNull()
+                    if (previous != null && canMerge(previous, cue)) {
+                        removeAt(lastIndex)
+                        add(
+                            previous.copy(
+                                text = previous.text + cue.text,
+                                chapterEnd = cue.chapterEnd,
+                            )
+                        )
+                    } else {
+                        add(cue)
+                    }
+                }
+            }
             return ReadAloudPlaybackQueue(cues)
+        }
+
+        private fun canMerge(
+            left: ReadAloudPlaybackCue,
+            right: ReadAloudPlaybackCue,
+        ): Boolean {
+            if (left.chapterEnd != right.chapterStart) return false
+            if (left.paragraphIndex != right.paragraphIndex) return false
+            if (left.roleType != right.roleType) return false
+            if (left.emotion != right.emotion) return false
+            if (!sameVoice(left.voice, right.voice)) return false
+
+            return when (left.roleType) {
+                SpeechRoleType.Narrator -> true
+                SpeechRoleType.Character,
+                SpeechRoleType.Thought -> {
+                    val leftId = left.characterId ?: left.characterPerformance?.characterId
+                    val rightId = right.characterId ?: right.characterPerformance?.characterId
+                    leftId != null && leftId == rightId
+                }
+                SpeechRoleType.Unknown -> false
+            }
+        }
+
+        private fun sameVoice(
+            left: ReadAloudVoice?,
+            right: ReadAloudVoice?,
+        ): Boolean {
+            if (left == null || right == null) return left == right
+            return left.engineType == right.engineType &&
+                left.engineId == right.engineId &&
+                left.speakerId == right.speakerId
         }
     }
 }
