@@ -1,0 +1,69 @@
+name: Apply Edge Multi-speaker Upgrade Directly
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/apply-edge-upgrade-direct.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run embedded upgrade from root workflow file
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          src_path = Path("upgrade-edge-multispeaker.yml")
+          if not src_path.exists():
+              raise SystemExit("Missing root file: upgrade-edge-multispeaker.yml")
+
+          src = src_path.read_text(encoding="utf-8")
+          start_marker = "          python3 <<'PY'\n"
+          end_marker = "\n          PY\n"
+
+          start = src.find(start_marker)
+          if start < 0:
+              raise SystemExit("Embedded Python upgrade block not found.")
+
+          start += len(start_marker)
+          end = src.find(end_marker, start)
+          if end < 0:
+              raise SystemExit("Embedded Python upgrade block end not found.")
+
+          block = src[start:end]
+          block = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in block.splitlines()
+          )
+
+          exec(compile(block, "embedded_upgrade.py", "exec"), {"__name__": "__main__"})
+          print("Edge multi-speaker patch applied.")
+          PY
+
+      - name: Commit patched app code
+        shell: bash
+        run: |
+          set -e
+          TARGET="app/src/main/java/io/legado/app/service/TTSReadAloudService.kt"
+
+          if git diff --quiet -- "$TARGET"; then
+            echo "No app-code change needed; upgrade may already be applied."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$TARGET"
+          git commit -m "feat(tts): apply Edge multi-speaker upgrade directly"
+          git push origin HEAD:main
