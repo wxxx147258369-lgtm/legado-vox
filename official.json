@@ -1,49 +1,49 @@
 {
   "tag_name": "1.0.0",
   "name": "Release 1.0.0",
-  "body": "### 更新内容\n\n* Add files via upload\n* Add files via upload\n* Add files via upload\n* Add files via upload",
+  "body": "### 更新内容\n\n* Add files via upload\n* feat(tts): apply Edge multi-speaker upgrade directly\n* Add files via upload\n* Add files via upload\n* Add files via upload\n* Add files via upload\n* Add files via upload\n* Add files via upload\n* Add files via upload",
   "prerelease": false,
   "created_at": "2026-09-30T23:27:32Z",
   "assets": [
     {
       "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0-arm64-v8a.apk",
       "content_type": "application/vnd.android.package-archive",
-      "created_at": "2026-10-01T02:37:42Z",
+      "created_at": "2026-10-01T05:44:32Z",
       "download_count": 0,
-      "id": 602281218,
+      "id": 602537101,
       "name": "legado-vox-1.0.0-arm64-v8a.apk",
       "state": "uploaded",
-      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602281218"
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602537101"
     },
     {
       "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0-armeabi-v7a.apk",
       "content_type": "application/vnd.android.package-archive",
-      "created_at": "2026-10-01T02:37:42Z",
+      "created_at": "2026-10-01T05:44:32Z",
       "download_count": 0,
-      "id": 602281219,
+      "id": 602537105,
       "name": "legado-vox-1.0.0-armeabi-v7a.apk",
       "state": "uploaded",
-      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602281219"
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602537105"
     },
     {
       "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/legado-vox-1.0.0.apk",
       "content_type": "application/vnd.android.package-archive",
-      "created_at": "2026-10-01T02:37:42Z",
+      "created_at": "2026-10-01T05:44:32Z",
       "download_count": 0,
-      "id": 602281217,
+      "id": 602537099,
       "name": "legado-vox-1.0.0.apk",
       "state": "uploaded",
-      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602281217"
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602537099"
     },
     {
       "browser_download_url": "https://github.com/wxxx147258369-lgtm/legado-vox/releases/download/1.0.0/mapping.txt",
       "content_type": "text/plain",
-      "created_at": "2026-10-01T02:37:42Z",
+      "created_at": "2026-10-01T05:44:32Z",
       "download_count": 0,
-      "id": 602281221,
+      "id": 602537100,
       "name": "mapping.txt",
       "state": "uploaded",
-      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602281221"
+      "url": "https://api.github.com/repos/wxxx147258369-lgtm/legado-vox/releases/assets/602537100"
     }
   ]
 }
