@@ -1,0 +1,114 @@
+name: V5 Smooth Voice Hotfix 3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/v5-smooth-voice-hotfix3.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: v5-smooth-voice-hotfix3
+  cancel-in-progress: true
+
+jobs:
+  voice-tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply magnetic male voice tuning
+        shell: bash
+        run: |
+          echo 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKZGVmIHJlYWQocGF0aCk6CiAgICByZXR1cm4gUGF0aChwYXRoKS5yZWFkX3RleHQoZW5jb2Rpbmc9J3V0Zi04JykKCmRlZiB3cml0ZShwYXRoLCB0ZXh0KToKICAgIFBhdGgocGF0aCkud3JpdGVfdGV4dCh0ZXh0LCBlbmNvZGluZz0ndXRmLTgnKQoKZGVmIHJlcGxhY2Vfb25jZSh0ZXh0LCBvbGQsIG5ldywgbGFiZWwpOgogICAgaWYgbmV3IGluIHRleHQ6CiAgICAgICAgcmV0dXJuIHRleHQKICAgIGlmIG9sZCBub3QgaW4gdGV4dDoKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KGYie2xhYmVsfTogYW5jaG9yIG5vdCBmb3VuZCIpCiAgICByZXR1cm4gdGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKQoKcnVsZXNfcGF0aCA9ICdhcHAvc3JjL21haW4vamF2YS9pby9sZWdhZG8vYXBwL2RvbWFpbi9tb2RlbC9yZWFkYWxvdWQvTm92ZWxWb2ljZUNhc3RpbmdSdWxlcy5rdCcKcnVsZXMgPSByZWFkKHJ1bGVzX3BhdGgpCnJ1bGVzID0gcmVwbGFjZV9vbmNlKHJ1bGVzLCAnICAgIHZhbCBNQUxFID0gbGlzdE9mKFxuICAgICAgICAiemgtQ04tWXVueGlOZXVyYWwiLFxuICAgICAgICAiemgtQ04tWXVuaGFvTmV1cmFsIixcbiAgICApJywgJyAgICB2YWwgTUFMRSA9IGxpc3RPZihcbiAgICAgICAgInpoLUNOLVl1bmppYW5OZXVyYWwiLFxuICAgICAgICAiemgtQ04tWXVuZmVuZ05ldXJhbCIsXG4gICAgKScsICdtYWxlIHNtb290aCB2b2ljZScpCndyaXRlKHJ1bGVzX3BhdGgsIHJ1bGVzKQoKdGVzdF9wYXRoID0gJ2FwcC9zcmMvdGVzdC9qYXZhL2lvL2xlZ2Fkby9hcHAvZG9tYWluL21vZGVsL3JlYWRhbG91ZC9Ob3ZlbFZvaWNlQ2FzdGluZ1J1bGVzVGVzdC5rdCcKdGVzdCA9IHJlYWQodGVzdF9wYXRoKQp0ZXN0ID0gcmVwbGFjZV9vbmNlKHRlc3QsICcgICAgICAgICAgICAiemgtQ04tWXVueGlOZXVyYWwiLFxuICAgICAgICAgICAgTm92ZWxWb2ljZUNhc3RpbmdSdWxlcy5wcmVmZXJyZWROYW1lcyhjdWUoKSwgIm1hbGUiKS5maXJzdCgpLCcsICcgICAgICAgICAgICAiemgtQ04tWXVuamlhbk5ldXJhbCIsXG4gICAgICAgICAgICBOb3ZlbFZvaWNlQ2FzdGluZ1J1bGVzLnByZWZlcnJlZE5hbWVzKGN1ZSgpLCAibWFsZSIpLmZpcnN0KCksJywgJ21hbGUgdm9pY2UgZXhwZWN0YXRpb24nKQp3cml0ZSh0ZXN0X3BhdGgsIHRlc3QpCgpjaGVja3MgPSB7CiAgICBydWxlc19wYXRoOiBbCiAgICAgICAgJyJ6aC1DTi1ZdW55YW5nTmV1cmFsIicsCiAgICAgICAgJyJ6aC1DTi1ZdW5qaWFuTmV1cmFsIicsCiAgICAgICAgJyJ6aC1DTi1ZdW5mZW5nTmV1cmFsIicsCiAgICAgICAgJyJ6aC1DTi1YaWFveGlhb05ldXJhbCInLAogICAgXSwKICAgIHRlc3RfcGF0aDogWwogICAgICAgICciemgtQ04tWXVuamlhbk5ldXJhbCInLAogICAgICAgICdhbGwgbWFsZSByb2xlcyBjb2xsYXBzZSB0byB0aGUgc2FtZSBzdGFibGUgbWFsZSB2b2ljZScsCiAgICBdLAp9CmZvciBwYXRoLCBtYXJrZXJzIGluIGNoZWNrcy5pdGVtcygpOgogICAgY29udGVudCA9IHJlYWQocGF0aCkKICAgIGZvciBtYXJrZXIgaW4gbWFya2VyczoKICAgICAgICBpZiBtYXJrZXIgbm90IGluIGNvbnRlbnQ6CiAgICAgICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJtaXNzaW5nIG1hcmtlciBpbiB7cGF0aH06IHttYXJrZXJ9IikKCnByaW50KCdIb3RmaXggMyB2b2ljZSB0dW5pbmcgYXBwbGllZCcpCg==' | base64 -d > /tmp/hotfix3.py
+          python -m py_compile /tmp/hotfix3.py
+          python /tmp/hotfix3.py
+
+      - name: Static diff safety
+        shell: bash
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Remove unreliable CI mirror
+        shell: bash
+        run: |
+          cp settings.gradle settings.gradle.voice3.bak
+          sed -i '/maven\.aliyun\.com/d' settings.gradle
+
+      - name: Full regression gate
+        shell: bash
+        env:
+          COMMIT_NUMBER: ${{ github.run_number }}
+          APP_VERSION_NAME: v5-smooth-voice-hotfix3-${{ github.run_number }}
+        run: |
+          ./gradlew testAppDebugUnitTest verifyConfigArchitecture lintAppDebug assembleAppDebug --continue --no-daemon --no-configuration-cache
+
+      - name: Restore build config
+        if: always()
+        shell: bash
+        run: |
+          if [ -f settings.gradle.voice3.bak ]; then
+            mv settings.gradle.voice3.bak settings.gradle
+          fi
+
+      - name: Commit voice tuning after gates pass
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             app/src/main/java/io/legado/app/domain/model/readaloud/NovelVoiceCastingRules.kt             app/src/test/java/io/legado/app/domain/model/readaloud/NovelVoiceCastingRulesTest.kt
+
+          if git diff --cached --quiet; then
+            echo "Voice tuning already present."
+          else
+            git commit -m "fix(tts): use deeper Yunjian voice for male roles"
+            git push origin HEAD:main
+          fi
+
+      - name: Build final APK and freeze again
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          FINAL_SHA=$(git rev-parse HEAD)
+
+          gh workflow enable auto-release.yml
+          gh workflow run auto-release.yml --ref main
+
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            RUN_ID=$(gh run list               --workflow auto-release.yml               --branch main               --limit 10               --json databaseId,headSha,event               --jq ".[] | select(.headSha == \"$FINAL_SHA\" and .event == \"workflow_dispatch\") | .databaseId" |
+              head -n 1)
+            [ -n "$RUN_ID" ] && break
+            sleep 2
+          done
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Could not locate Hotfix 3 APK build run."
+            exit 1
+          fi
+
+          echo "Hotfix 3 APK run: $RUN_ID"
+          gh run watch "$RUN_ID" --exit-status
+
+          gh workflow disable auto-release.yml || true
+          gh workflow disable v5-smooth-voice-hotfix3.yml || true
