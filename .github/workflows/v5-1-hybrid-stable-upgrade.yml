@@ -1,0 +1,959 @@
+name: V5.1 Hybrid Stable Upgrade
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/v5-1-hybrid-stable-upgrade.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply V5.1 hybrid stable engine
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if new in text:
+                  return text
+              if old not in text:
+                  raise SystemExit(f"{label}: anchor not found; refusing partial patch")
+              return text.replace(old, new, 1)
+
+          tuning_path = Path(
+              "app/src/main/java/io/legado/app/domain/model/readaloud/HumanizedSpeechTuning.kt"
+          )
+          tuning_path.write_text(r'''package io.legado.app.domain.model.readaloud
+
+data class SpeechTuning(
+    val rateMultiplier: Float = 1f,
+    val pitchMultiplier: Float = 1f,
+)
+
+object HumanizedSpeechTuning {
+
+    fun forCue(cue: ReadAloudPlaybackCue): SpeechTuning {
+        var rate = when (cue.roleType) {
+            SpeechRoleType.Narrator -> 0.995f
+            SpeechRoleType.Character -> 1.00f
+            SpeechRoleType.Thought -> 0.94f
+            SpeechRoleType.Unknown -> 1.00f
+        }
+        var pitch = if (cue.roleType == SpeechRoleType.Thought) 0.985f else 1.00f
+
+        when (cue.emotion.lowercase()) {
+            "angry" -> { rate *= 1.045f; pitch *= 0.985f }
+            "fearful" -> { rate *= 1.015f; pitch *= 1.025f }
+            "sad" -> { rate *= 0.93f; pitch *= 0.98f }
+            "disgusted" -> { rate *= 0.96f; pitch *= 0.98f }
+            "cheerful" -> { rate *= 1.025f; pitch *= 1.015f }
+            "surprised" -> { rate *= 1.035f; pitch *= 1.03f }
+            "whispering" -> { rate *= 0.92f; pitch *= 0.97f }
+            "calm" -> { rate *= 0.97f; pitch *= 0.995f }
+        }
+
+        when (cue.characterPerformance?.voiceAgeBand?.lowercase()) {
+            "child", "kid", "儿童", "孩子" -> { rate *= 1.02f; pitch *= 1.04f }
+            "elder", "old", "老人", "老年" -> { rate *= 0.94f; pitch *= 0.955f }
+            "young", "youth", "青年", "少年" -> { rate *= 1.008f; pitch *= 1.01f }
+        }
+
+        val personality = cue.characterPerformance?.personality.orEmpty()
+        when {
+            coldPersonality.containsMatchIn(personality) -> {
+                rate *= 0.975f
+                pitch *= 0.99f
+            }
+            livelyPersonality.containsMatchIn(personality) -> {
+                rate *= 1.018f
+                pitch *= 1.01f
+            }
+            commandingPersonality.containsMatchIn(personality) -> {
+                rate *= 0.97f
+                pitch *= 0.98f
+            }
+        }
+
+        val text = cue.text
+        when {
+            text.contains("？！") || text.contains("!?") || text.contains("!?") -> {
+                rate *= 1.02f
+                pitch *= 1.02f
+            }
+            text.contains('？') || text.contains('?') -> pitch *= 1.01f
+            text.contains('！') || text.contains('!') -> rate *= 1.01f
+        }
+        if (text.contains("……") || text.contains("...")) rate *= 0.96f
+
+        return SpeechTuning(
+            rateMultiplier = rate.coerceIn(0.88f, 1.08f),
+            pitchMultiplier = pitch.coerceIn(0.93f, 1.06f),
+        )
+    }
+
+    fun inferredGender(cues: List<ReadAloudPlaybackCue>, index: Int): String {
+        val cue = cues.getOrNull(index) ?: return ""
+        val profile = cue.characterPerformance
+        when (profile?.voiceGender?.lowercase()) {
+            "female" -> return "female"
+            "male" -> return "male"
+        }
+        when (profile?.role) {
+            "female_lead", "female_supporting" -> return "female"
+            "male_lead", "male_supporting" -> return "male"
+        }
+
+        val context = contextAround(cues, index)
+        return when {
+            femaleCueRegex.containsMatchIn(context) -> "female"
+            maleCueRegex.containsMatchIn(context) -> "male"
+            else -> ""
+        }
+    }
+
+    fun stableSpeakerKey(cues: List<ReadAloudPlaybackCue>, index: Int): String {
+        val cue = cues.getOrNull(index) ?: return "unknown-speaker"
+        if (cue.roleType == SpeechRoleType.Narrator) return "narrator"
+
+        cue.characterId?.takeIf(String::isNotBlank)?.let { return "character:$it" }
+        cue.characterPerformance?.characterId
+            ?.takeIf(String::isNotBlank)
+            ?.let { return "character:$it" }
+
+        explicitSpeakerName(cues, index)?.let { return "name:$it" }
+
+        val blockStart = dialogueBlockStart(cues, index)
+        val blockSeed = cues.getOrNull(blockStart)?.chapterStart ?: cue.chapterStart
+        if (cue.roleType == SpeechRoleType.Thought) return "thought:$blockSeed"
+
+        val turn = cues.subList(blockStart, index + 1).count {
+            it.roleType == SpeechRoleType.Character || it.roleType == SpeechRoleType.Thought
+        }
+        val slot = if ((turn - 1).coerceAtLeast(0) % 2 == 0) "A" else "B"
+        val gender = inferredGender(cues, index).ifBlank { "unknown" }
+        return "dialogue:$blockSeed:$gender:$slot"
+    }
+
+    fun pauseBeforeMs(
+        cues: List<ReadAloudPlaybackCue>,
+        index: Int,
+        baseMs: Long,
+    ): Long {
+        if (baseMs <= 0L || index <= 0) return 0L
+        val previous = cues.getOrNull(index - 1) ?: return baseMs
+        val current = cues.getOrNull(index) ?: return baseMs
+
+        val sameSpeaker =
+            stableSpeakerKey(cues, index - 1) == stableSpeakerKey(cues, index)
+
+        var value = when {
+            sameSpeaker && previous.paragraphIndex == current.paragraphIndex ->
+                minOf(baseMs, 35L)
+            previous.roleType == SpeechRoleType.Narrator &&
+                current.roleType == SpeechRoleType.Narrator ->
+                minOf(baseMs, 55L)
+            else -> baseMs
+        }
+
+        val text = previous.text.trim()
+        when {
+            text.endsWith("……") || text.endsWith("...") -> value += 100L
+            text.endsWith("？") || text.endsWith("?") -> value += 25L
+            text.endsWith("。") -> value += 15L
+            text.endsWith("！") || text.endsWith("!") -> value -= 10L
+        }
+
+        when (previous.emotion.lowercase()) {
+            "sad" -> value += 45L
+            "whispering" -> value += 35L
+            "calm" -> value += 15L
+            "angry" -> value -= 15L
+        }
+
+        if (previous.roleType == SpeechRoleType.Thought) value += 30L
+        if (current.roleType != previous.roleType) value += 15L
+
+        return value.coerceIn(20L, 300L)
+    }
+
+    private fun explicitSpeakerName(
+        cues: List<ReadAloudPlaybackCue>,
+        index: Int,
+    ): String? {
+        val context = contextAround(cues, index)
+        val match = speakerNameRegex.findAll(context).lastOrNull() ?: return null
+        val value = normalizeName(match.groupValues[1])
+        return value.takeIf { it.length in 2..5 && it !in stopNames }
+    }
+
+    private fun contextAround(
+        cues: List<ReadAloudPlaybackCue>,
+        index: Int,
+    ): String {
+        val pieces = mutableListOf<String>()
+        for (distance in 1..2) {
+            cues.getOrNull(index - distance)
+                ?.takeIf { it.roleType == SpeechRoleType.Narrator }
+                ?.text
+                ?.let(pieces::add)
+            cues.getOrNull(index + distance)
+                ?.takeIf { it.roleType == SpeechRoleType.Narrator }
+                ?.text
+                ?.let(pieces::add)
+        }
+        return pieces.joinToString(" ")
+    }
+
+    private fun dialogueBlockStart(
+        cues: List<ReadAloudPlaybackCue>,
+        index: Int,
+    ): Int {
+        var start = index
+        var cursor = index - 1
+        var inspected = 0
+        val currentParagraph = cues.getOrNull(index)?.paragraphIndex ?: return index
+
+        while (cursor >= 0 && inspected < 12) {
+            val cue = cues[cursor]
+            if (
+                cue.roleType == SpeechRoleType.Narrator &&
+                (
+                    cue.text.trim().length >= 88 ||
+                    sceneBreakRegex.containsMatchIn(cue.text) ||
+                    currentParagraph - cue.paragraphIndex >= 4
+                )
+            ) break
+            start = cursor
+            cursor--
+            inspected++
+        }
+        return start
+    }
+
+    private fun normalizeName(value: String): String = value
+        .trim()
+        .trim('“', '”', '‘', '’', '"', '\'', '，', ',', '。', '：', ':', '！', '!', '？', '?')
+        .removePrefix("此时")
+        .removePrefix("这时")
+        .removePrefix("随后")
+        .removePrefix("接着")
+        .removePrefix("然后")
+        .removePrefix("突然")
+        .removePrefix("忽然")
+        .trim()
+
+    private val speakerNameRegex = Regex(
+        "([\\p{IsHan}·]{2,5})(?:低声|沉声|冷声|怒声|大声|轻声|厉声|笑着|淡淡地|缓缓地|咬牙|喃喃|嘟囔)?(?:说|说道|问|问道|答|答道|喊|喊道|叫|叫道|喝道|笑道|叹道|反问道|开口道)"
+    )
+    private val femaleCueRegex = Regex(
+        "(?:她|女人|女子|女孩|少女|姑娘|小姐|夫人|太太|母亲|妈妈|姐姐|妹妹|奶奶|女声)"
+    )
+    private val maleCueRegex = Regex(
+        "(?:他|男人|男子|男孩|少年|青年|先生|父亲|爸爸|哥哥|弟弟|爷爷|男声)"
+    )
+    private val sceneBreakRegex = Regex(
+        "(?:与此同时|另一边|另一处|片刻之后|许久之后|第二天|翌日|次日|夜幕|天亮|镜头一转|场景一转)"
+    )
+    private val coldPersonality = Regex("冷酷|冷静|沉稳|寡言|克制|淡漠|高冷")
+    private val livelyPersonality = Regex("活泼|开朗|跳脱|调皮|可爱|热情")
+    private val commandingPersonality = Regex("威严|霸气|强势|果断|首领|领导|上位者")
+    private val stopNames = setOf(
+        "这个男人", "那个男人", "这个女人", "那个女人",
+        "年轻男人", "年轻女人", "中年男人", "中年女人",
+        "一个男人", "一个女人", "所有人", "众人", "对方",
+        "男人", "女人", "老人", "老头", "青年", "少年", "少女", "女孩", "男孩",
+    )
+}
+''', encoding="utf-8")
+
+          cfg_path = Path(
+              "app/src/main/java/io/legado/app/domain/model/readaloud/SystemTtsVoiceConfig.kt"
+          )
+          cfg_path.write_text('''package io.legado.app.domain.model.readaloud
+
+data class SystemTtsVoiceConfig(
+    val speechRate: Float? = null,
+    val pitch: Float? = null,
+    val rateMultiplier: Float? = null,
+    val pitchMultiplier: Float? = null,
+)
+''', encoding="utf-8")
+
+          queue_path = Path(
+              "app/src/main/java/io/legado/app/domain/model/readaloud/ReadAloudPlaybackQueue.kt"
+          )
+          queue = queue_path.read_text(encoding="utf-8")
+          old_queue = '''            val cues = plan.map { item ->
+                val segment = item.segment
+                ReadAloudPlaybackCue(
+                    text = segment.text,
+                    chapterStart = segment.chapterPosition,
+                    chapterEnd = segment.chapterPosition + segment.text.length,
+                    paragraphIndex = segment.paragraphIndex,
+                    voice = item.voice,
+                    fallbackVoices = item.fallbackVoices,
+                    roleType = segment.roleType,
+                    characterId = segment.characterId,
+                    emotion = segment.emotion,
+                    characterPerformance = item.characterPerformance,
+                )
+            }.sortedWith(compareBy(ReadAloudPlaybackCue::chapterStart, ReadAloudPlaybackCue::chapterEnd))
+'''
+          new_queue = '''            val rawCues = plan.map { item ->
+                val segment = item.segment
+                ReadAloudPlaybackCue(
+                    text = segment.text,
+                    chapterStart = segment.chapterPosition,
+                    chapterEnd = segment.chapterPosition + segment.text.length,
+                    paragraphIndex = segment.paragraphIndex,
+                    voice = item.voice,
+                    fallbackVoices = item.fallbackVoices,
+                    roleType = segment.roleType,
+                    characterId = segment.characterId,
+                    emotion = segment.emotion,
+                    characterPerformance = item.characterPerformance,
+                )
+            }.sortedWith(compareBy(ReadAloudPlaybackCue::chapterStart, ReadAloudPlaybackCue::chapterEnd))
+
+            val cues = buildList {
+                rawCues.forEach { cue ->
+                    val previous = lastOrNull()
+                    if (previous != null && canMerge(previous, cue)) {
+                        removeAt(lastIndex)
+                        add(
+                            previous.copy(
+                                text = previous.text + cue.text,
+                                chapterEnd = cue.chapterEnd,
+                            )
+                        )
+                    } else {
+                        add(cue)
+                    }
+                }
+            }
+'''
+          queue = replace_once(queue, old_queue, new_queue, "queue smoothing")
+
+          old_close = '''            return ReadAloudPlaybackQueue(cues)
+        }
+    }
+}
+'''
+          new_close = '''            return ReadAloudPlaybackQueue(cues)
+        }
+
+        private fun canMerge(
+            left: ReadAloudPlaybackCue,
+            right: ReadAloudPlaybackCue,
+        ): Boolean {
+            if (left.chapterEnd != right.chapterStart) return false
+            if (left.paragraphIndex != right.paragraphIndex) return false
+            if (left.roleType != right.roleType) return false
+            if (left.emotion != right.emotion) return false
+            if (!sameVoice(left.voice, right.voice)) return false
+
+            return when (left.roleType) {
+                SpeechRoleType.Narrator -> true
+                SpeechRoleType.Character,
+                SpeechRoleType.Thought -> {
+                    val leftId = left.characterId
+                        ?: left.characterPerformance?.characterId
+                    val rightId = right.characterId
+                        ?: right.characterPerformance?.characterId
+                    leftId != null && leftId == rightId
+                }
+                SpeechRoleType.Unknown -> false
+            }
+        }
+
+        private fun sameVoice(
+            left: ReadAloudVoice?,
+            right: ReadAloudVoice?,
+        ): Boolean {
+            if (left == null || right == null) return left == right
+            return left.engineType == right.engineType &&
+                left.engineId == right.engineId &&
+                left.speakerId == right.speakerId
+        }
+    }
+}
+'''
+          queue = replace_once(queue, old_close, new_close, "queue merge helper")
+          queue_path.write_text(queue, encoding="utf-8")
+
+          segmenter_path = Path(
+              "app/src/main/java/io/legado/app/help/readaloud/segment/RuleBasedSpeechSegmenter.kt"
+          )
+          segmenter = segmenter_path.read_text(encoding="utf-8")
+          segmenter = segmenter.replace(
+              'const val VERSION = "rule-segmenter-v2-emotion"',
+              'const val VERSION = "rule-segmenter-v5-1-hybrid"',
+              1,
+          )
+          old_quote = '''return if (inner.length >= 6 || inner.any(sentencePunctuation::contains)) {
+            SpeechRoleType.Character
+        } else {
+            SpeechRoleType.Narrator
+        }'''
+          new_quote = '''return if (
+            inner.isNotBlank() &&
+            (
+                text[openIndex] in setOf('“', '‘', '「', '『') ||
+                inner.length >= 6 ||
+                inner.any(sentencePunctuation::contains)
+            )
+        ) {
+            SpeechRoleType.Character
+        } else {
+            SpeechRoleType.Narrator
+        }'''
+          if old_quote in segmenter:
+              segmenter = segmenter.replace(old_quote, new_quote, 1)
+          elif new_quote not in segmenter:
+              raise SystemExit("short-dialogue anchor not found")
+          segmenter_path.write_text(segmenter, encoding="utf-8")
+
+          atom_path = Path(
+              "app/src/main/java/io/legado/app/help/readaloud/segment/AiSpeechAtomizer.kt"
+          )
+          atom = atom_path.read_text(encoding="utf-8")
+          old_atom = '''            if (char in SENTENCE_ENDS) {
+                var end = index + 1
+                while (end < paragraph.text.length && paragraph.text[end] in ALL_CLOSE_QUOTES) {
+                    if (paragraph.text[end] == '\"') straightDoubleOpen = false
+                    if (paragraph.text[end] == '\\'') straightSingleOpen = false
+                    end++
+                }
+                boundaries += end
+                index = end - 1
+            }
+'''
+          new_atom = '''            if (char in SENTENCE_ENDS) {
+                var end = index + 1
+                while (
+                    end < paragraph.text.length &&
+                    (
+                        paragraph.text[end] in SENTENCE_ENDS ||
+                        paragraph.text[end] in ALL_CLOSE_QUOTES
+                    )
+                ) {
+                    if (paragraph.text[end] == '\"') straightDoubleOpen = false
+                    if (paragraph.text[end] == '\\'') straightSingleOpen = false
+                    end++
+                }
+                boundaries += end
+                index = end - 1
+            }
+'''
+          atom = replace_once(atom, old_atom, new_atom, "AI punctuation grouping")
+          atom = atom.replace(
+              "private val SENTENCE_ENDS = setOf('。', '！', '？', '!', '?', '；', ';')",
+              "private val SENTENCE_ENDS = setOf('。', '！', '？', '!', '?', '…')",
+              1,
+          )
+          atom_path.write_text(atom, encoding="utf-8")
+
+          ai_path = Path(
+              "app/src/main/java/io/legado/app/domain/usecase/RefineSpeechWithAiUseCase.kt"
+          )
+          ai = ai_path.read_text(encoding="utf-8")
+          old_payload = '''        val updates = linkedMapOf<String, AiSegmentDecision>()
+        candidates.chunkByTextLength(MAX_CHUNK_CHARS) { it.text }.forEach { chunk ->
+            val payload = mapOf(
+                "characters" to profiles.map { it.toPromptMap() },
+                "segments" to chunk.map { segment ->
+                    mapOf(
+                        "segmentId" to segment.id,
+                        "text" to segment.text,
+                        "roleType" to segment.roleType.storageValue,
+                        "characterId" to segment.characterId,
+                        "emotion" to segment.emotion,
+                        "confidence" to segment.confidence,
+                    )
+                },
+            )
+'''
+          new_payload = '''        val updates = linkedMapOf<String, AiSegmentDecision>()
+        val segmentIndexById = analysisResult.segments
+            .withIndex()
+            .associate { it.value.id to it.index }
+
+        candidates.chunkByTextLength(MAX_CHUNK_CHARS) { it.text }.forEach { chunk ->
+            val payload = mapOf(
+                "characters" to profiles.map { it.toPromptMap() },
+                "segments" to chunk.map { segment ->
+                    val sourceIndex = segmentIndexById.getValue(segment.id)
+                    val before = analysisResult.segments
+                        .subList(maxOf(0, sourceIndex - 2), sourceIndex)
+                        .map { nearby ->
+                            mapOf(
+                                "text" to nearby.text,
+                                "roleType" to nearby.roleType.storageValue,
+                                "characterId" to nearby.characterId,
+                                "characterName" to nearby.characterName,
+                            )
+                        }
+                    val after = analysisResult.segments
+                        .subList(
+                            minOf(sourceIndex + 1, analysisResult.segments.size),
+                            minOf(sourceIndex + 3, analysisResult.segments.size),
+                        )
+                        .map { nearby ->
+                            mapOf(
+                                "text" to nearby.text,
+                                "roleType" to nearby.roleType.storageValue,
+                                "characterId" to nearby.characterId,
+                                "characterName" to nearby.characterName,
+                            )
+                        }
+                    mapOf(
+                        "segmentId" to segment.id,
+                        "text" to segment.text,
+                        "roleType" to segment.roleType.storageValue,
+                        "characterId" to segment.characterId,
+                        "emotion" to segment.emotion,
+                        "confidence" to segment.confidence,
+                        "contextBefore" to before,
+                        "contextAfter" to after,
+                    )
+                },
+            )
+'''
+          ai = replace_once(ai, old_payload, new_payload, "AI context")
+          ai = ai.replace(
+              'const val VERSION = "ai-speech-analysis-v1"',
+              'const val VERSION = "ai-speech-analysis-v2-context"',
+              1,
+          )
+          ai = ai.replace(
+              "private const val HYBRID_CONFIDENCE_THRESHOLD = 0.75f",
+              "private const val HYBRID_CONFIDENCE_THRESHOLD = 0.82f",
+              1,
+          )
+          old_prompt = '''        private const val DEFAULT_PROMPT =
+            "Analyze fiction speech for text-to-speech. Distinguish narration, spoken dialogue, " +
+                "internal thought and unknown speech. Resolve speakers only from the supplied " +
+                "character IDs, infer emotion conservatively, and use null when uncertain."
+'''
+          new_prompt = '''        private const val DEFAULT_PROMPT =
+            "Analyze fiction speech for text-to-speech. Distinguish narration, spoken dialogue, " +
+                "internal thought and unknown speech. Resolve speakers only from the supplied " +
+                "character IDs. Use contextBefore/contextAfter to preserve dialogue-turn continuity, " +
+                "pronoun references and nearby speech verbs. Prefer the same speaker across a " +
+                "continuous utterance, but never invent a speaker when evidence is weak. Infer " +
+                "emotion conservatively and use null when uncertain. Never split or rewrite text."
+'''
+          ai = replace_once(ai, old_prompt, new_prompt, "AI prompt")
+          ai_path.write_text(ai, encoding="utf-8")
+
+          tts_path = Path(
+              "app/src/main/java/io/legado/app/service/TTSReadAloudService.kt"
+          )
+          tts = tts_path.read_text(encoding="utf-8")
+
+          if "V5_1_HYBRID_STABLE" not in tts:
+              tts = replace_once(
+                  tts,
+                  "import io.legado.app.domain.model.readaloud.ReadAloudPlaybackCursor\n",
+                  "import io.legado.app.domain.model.readaloud.ReadAloudPlaybackCursor\n"
+                  "import io.legado.app.domain.model.readaloud.HumanizedSpeechTuning\n",
+                  "TTS import",
+              )
+              tts = tts.replace(
+                  "    private var speechRateSetting: Int = 5\n",
+                  "    private var speechRateSetting: Int = 8\n",
+                  1,
+              )
+              tts = replace_once(
+                  tts,
+                  '    private var defaultVoiceName = ""\n'
+                  '    private var initGeneration = 0\n',
+                  '    private var defaultVoiceName = ""\n'
+                  '    private var disabledEngine = ""\n'
+                  '    private var activeSpeechRate = Float.NaN\n'
+                  '    private var activePitch = Float.NaN\n'
+                  '    private var initGeneration = 0\n'
+                  '    private val V5_1_HYBRID_STABLE = true\n',
+                  "TTS state",
+              )
+              tts = tts.replace(
+                  '        defaultVoiceName = ""\n        initGeneration++\n',
+                  '        defaultVoiceName = ""\n'
+                  '        activeSpeechRate = Float.NaN\n'
+                  '        activePitch = Float.NaN\n'
+                  '        initGeneration++\n',
+                  1,
+              )
+
+              old_init = '''    private fun onTtsInitialized(status: Int, generation: Int) {
+        if (generation != initGeneration) return
+        if (status == TextToSpeech.SUCCESS) {
+            textToSpeech?.let {
+                it.setOnUtteranceProgressListener(ttsUtteranceListener)
+                defaultVoiceName = it.defaultVoice?.name.orEmpty()
+                activeVoiceName = defaultVoiceName
+                ttsInitFinish = true
+                play()
+            }
+        } else {
+            toastOnUi(R.string.tts_init_failed)
+        }
+    }
+'''
+              new_init = '''    private fun onTtsInitialized(status: Int, generation: Int) {
+        if (generation != initGeneration) return
+        if (status == TextToSpeech.SUCCESS) {
+            textToSpeech?.let {
+                it.setOnUtteranceProgressListener(ttsUtteranceListener)
+                defaultVoiceName = it.defaultVoice?.name.orEmpty()
+                activeVoiceName = defaultVoiceName
+                ttsInitFinish = true
+                play()
+            }
+            return
+        }
+
+        val failedEngine = activeEngine
+        if (
+            failedEngine.isNotBlank() &&
+            !failedEngine.equals(disabledEngine, ignoreCase = true)
+        ) {
+            disabledEngine = failedEngine
+            AppLog.putDebug("TTS引擎初始化失败，当前会话回退系统TTS: $failedEngine")
+            clearTTS()
+            initTts("")
+        } else {
+            toastOnUi(R.string.tts_init_failed)
+        }
+    }
+'''
+              tts = replace_once(tts, old_init, new_init, "TTS fallback")
+
+              old_engine = '''    private fun preferredMultiSpeakerEngine(configured: String): String {
+        if (configured.isNotBlank() || !ReadConfig.useMultiSpeaker) return configured
+        val engines = textToSpeech?.engines.orEmpty()
+        return engines.firstOrNull {
+            it.name.equals(EDGE_TTS_PACKAGE, ignoreCase = true)
+        }?.name ?: engines.firstOrNull {
+            it.name.contains("edge_tts", ignoreCase = true) ||
+                it.label.toString().contains("Edge TTS", ignoreCase = true)
+        }?.name.orEmpty()
+    }
+'''
+              new_engine = '''    private fun preferredMultiSpeakerEngine(configured: String): String {
+        if (!ReadConfig.useMultiSpeaker) return configured
+        if (
+            configured.isNotBlank() &&
+            !configured.equals(disabledEngine, ignoreCase = true)
+        ) return configured
+
+        val engines = textToSpeech?.engines.orEmpty()
+            .filterNot { it.name.equals(disabledEngine, ignoreCase = true) }
+
+        return engines.firstOrNull {
+            it.name.equals(EDGE_TTS_PACKAGE, ignoreCase = true)
+        }?.name ?: engines.firstOrNull {
+            it.name.contains("edge_tts", ignoreCase = true) ||
+                it.label.toString().contains("Edge TTS", ignoreCase = true)
+        }?.name.orEmpty()
+    }
+'''
+              tts = replace_once(tts, old_engine, new_engine, "TTS engine")
+
+              auto_start = tts.index("    private fun autoVoiceNameForCurrentCue(): String {")
+              auto_end = tts.index("    private fun applyPreset", auto_start)
+              if auto_start < 0 or auto_end < 0:
+                  raise SystemExit("auto-voice anchors not found")
+
+              new_auto = '''    private fun autoVoiceNameForCurrentCue(): String {
+        val tts = textToSpeech ?: return ""
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val cue = playbackQueue.cues.getOrNull(cueIndex) ?: return ""
+        val allVoices = tts.voices.orEmpty()
+        if (allVoices.isEmpty()) return ""
+
+        val chineseVoices = allVoices.filter { voice ->
+            voice.locale.language.equals("zh", ignoreCase = true) ||
+                voice.locale.toLanguageTag().startsWith("zh", ignoreCase = true) ||
+                voice.name.startsWith("zh-", ignoreCase = true)
+        }
+        val available = if (chineseVoices.isNotEmpty()) chineseVoices else allVoices.toList()
+
+        fun preferredPool(preferredNames: List<String>): List<android.speech.tts.Voice> {
+            val preferred = preferredNames.mapNotNull { preferredName ->
+                available.firstOrNull { voice ->
+                    voice.name.equals(preferredName, ignoreCase = true) ||
+                        voice.name.contains(preferredName, ignoreCase = true)
+                }
+            }.distinctBy { it.name }
+            return if (preferred.isNotEmpty()) preferred else available.sortedBy { it.name }
+        }
+
+        val narratorPool = preferredPool(NARRATOR_VOICE_PREFERENCES)
+        val femalePool = preferredPool(FEMALE_VOICE_PREFERENCES)
+        val malePool = preferredPool(MALE_VOICE_PREFERENCES)
+
+        if (cue.roleType == SpeechRoleType.Narrator) {
+            return narratorPool.firstOrNull()?.name.orEmpty()
+        }
+
+        val inferredGender = HumanizedSpeechTuning.inferredGender(
+            playbackQueue.cues,
+            cueIndex,
+        )
+        val pool = when (inferredGender) {
+            "female" -> femalePool
+            "male" -> malePool
+            else -> {
+                val narratorName = narratorPool.firstOrNull()?.name
+                available.filterNot { it.name == narratorName }
+                    .ifEmpty { available }
+                    .sortedBy { it.name }
+            }
+        }
+        if (pool.isEmpty()) return narratorPool.firstOrNull()?.name.orEmpty()
+
+        val stableKey = HumanizedSpeechTuning.stableSpeakerKey(
+            playbackQueue.cues,
+            cueIndex,
+        )
+        return pool[Math.floorMod(stableKey.hashCode(), pool.size)].name
+    }
+
+'''
+              tts = tts[:auto_start] + new_auto + tts[auto_end:]
+
+              old_preset = '''    private fun applyPreset(voice: ReadAloudVoice) {
+        val config = runCatching {
+            GSON.fromJson(voice.traitsJson, SystemTtsVoiceConfig::class.java)
+        }.getOrNull() ?: SystemTtsVoiceConfig()
+        val globalRate = if (ReadConfig.ttsFollowSys) {
+            1f
+        } else {
+            (ReadConfig.ttsSpeechRate + 5) / 10f
+        }
+        textToSpeech?.apply {
+            setSpeechRate(config.speechRate ?: globalRate)
+            setPitch(config.pitch ?: 1f)
+        }
+    }
+'''
+              new_preset = '''    private fun applyPreset(voice: ReadAloudVoice) {
+        val config = runCatching {
+            GSON.fromJson(voice.traitsJson, SystemTtsVoiceConfig::class.java)
+        }.getOrNull() ?: SystemTtsVoiceConfig()
+        val globalRate = if (ReadConfig.ttsFollowSys) {
+            1f
+        } else {
+            (speechRateSetting + 5) / 10f
+        }
+
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val tuning = playbackQueue.cues.getOrNull(cueIndex)
+            ?.let(HumanizedSpeechTuning::forCue)
+
+        val finalRate = (
+            (config.speechRate ?: globalRate) *
+                (config.rateMultiplier ?: 1f) *
+                (tuning?.rateMultiplier ?: 1f)
+            ).coerceIn(0.75f, 2.15f)
+        val finalPitch = (
+            (config.pitch ?: 1f) *
+                (config.pitchMultiplier ?: 1f) *
+                (tuning?.pitchMultiplier ?: 1f)
+            ).coerceIn(0.84f, 1.16f)
+
+        textToSpeech?.apply {
+            if (
+                activeSpeechRate.isNaN() ||
+                kotlin.math.abs(activeSpeechRate - finalRate) >= 0.015f
+            ) {
+                setSpeechRate(finalRate)
+                activeSpeechRate = finalRate
+            }
+            if (
+                activePitch.isNaN() ||
+                kotlin.math.abs(activePitch - finalPitch) >= 0.015f
+            ) {
+                setPitch(finalPitch)
+                activePitch = finalPitch
+            }
+        }
+    }
+
+    private fun dynamicCueIntervalMs(): Long {
+        val base = ReadConfig.ttsParagraphInterval.toLong().coerceAtLeast(0L)
+        if (!hasSpeechPlaybackQueue || base <= 0L) return base
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        return HumanizedSpeechTuning.pauseBeforeMs(
+            playbackQueue.cues,
+            cueIndex,
+            base,
+        )
+    }
+
+    private fun shouldSkipTtsNoise(text: String): Boolean {
+        val value = text.trim()
+        if (value.length > 100) return false
+        val cueIndex = playbackCursor?.cueIndex ?: nowSpeak
+        val cue = playbackQueue.cues.getOrNull(cueIndex)
+        if (cue != null && cue.roleType != SpeechRoleType.Narrator) return false
+
+        return value.matches(
+            Regex("^(?:本章未完.*|.*最新网址.*|.*请收藏本站.*|.*手机用户请浏览.*|.*关注公众号.*|.*章节报错.*|.*加入书签.*)$")
+        )
+    }
+'''
+              tts = replace_once(tts, old_preset, new_preset, "TTS smoothing")
+              tts = tts.replace(
+                  "            val interval = ReadConfig.ttsParagraphInterval.toLong()\n",
+                  "            val interval = dynamicCueIntervalMs()\n",
+                  1,
+              )
+
+              old_skip = '''                if (text.matches(AppPattern.notReadAloudRegex)) {
+                    AppLog.putDebug("TTS段落全标点跳过: nowSpeak=$nowSpeak")
+                    ttsUtteranceListener.onDone(AppConst.APP_TAG + nowSpeak)
+                    return@execute
+                }
+'''
+              new_skip = '''                if (
+                    text.matches(AppPattern.notReadAloudRegex) ||
+                    shouldSkipTtsNoise(text)
+                ) {
+                    AppLog.putDebug("TTS段落噪声/全标点跳过: nowSpeak=$nowSpeak")
+                    ttsUtteranceListener.onDone(AppConst.APP_TAG + nowSpeak)
+                    return@execute
+                }
+'''
+              tts = replace_once(tts, old_skip, new_skip, "noise filter")
+              tts_path.write_text(tts, encoding="utf-8")
+
+          settings_path = Path(
+              "app/src/main/java/io/legado/app/domain/model/settings/ReadAloudSettings.kt"
+          )
+          settings = settings_path.read_text(encoding="utf-8")
+          settings = settings.replace(
+              "val ttsFollowSys: Boolean = true,",
+              "val ttsFollowSys: Boolean = false,",
+              1,
+          )
+          settings = settings.replace(
+              "val ttsSpeechRate: Int = 5,",
+              "val ttsSpeechRate: Int = 8,",
+              1,
+          )
+          settings = settings.replace(
+              'val speechAnalysisMode: String = "rule",',
+              'val speechAnalysisMode: String = "rule_with_ai",',
+              1,
+          )
+          settings_path.write_text(settings, encoding="utf-8")
+
+          repo_path = Path(
+              "app/src/main/java/io/legado/app/data/repository/ReadAloudSettingsRepository.kt"
+          )
+          repo = repo_path.read_text(encoding="utf-8")
+          repo = repo.replace(
+              "compatDsValue(ReadAloudKeys.TtsFollowSys, true)",
+              "compatDsValue(ReadAloudKeys.TtsFollowSys, false)",
+              1,
+          )
+          repo = repo.replace(
+              "compatDsValue(ReadAloudKeys.TtsSpeechRate, 5)",
+              "compatDsValue(ReadAloudKeys.TtsSpeechRate, 8)",
+              1,
+          )
+          repo = repo.replace(
+              'compatDsValue(ReadAloudKeys.SpeechAnalysisMode, "rule")',
+              'compatDsValue(ReadAloudKeys.SpeechAnalysisMode, "rule_with_ai")',
+              1,
+          )
+          repo_path.write_text(repo, encoding="utf-8")
+
+          required = {
+              tuning_path: ["object HumanizedSpeechTuning", "stableSpeakerKey", "pauseBeforeMs"],
+              queue_path: ["canMerge", "sameVoice"],
+              segmenter_path: ["rule-segmenter-v5-1-hybrid"],
+              atom_path: ["paragraph.text[end] in SENTENCE_ENDS"],
+              ai_path: ["ai-speech-analysis-v2-context", "contextBefore", "contextAfter"],
+              tts_path: ["V5_1_HYBRID_STABLE", "dynamicCueIntervalMs", "activeSpeechRate"],
+              cfg_path: ["rateMultiplier", "pitchMultiplier"],
+          }
+          for path, markers in required.items():
+              data = path.read_text(encoding="utf-8")
+              missing = [m for m in markers if m not in data]
+              if missing:
+                  raise SystemExit(f"{path}: missing markers: {missing}")
+
+          print("V5.1 Hybrid Stable patch applied.")
+          PY
+
+      - name: Static safety check
+        shell: bash
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Remove unreliable CI mirror
+        shell: bash
+        run: |
+          sed -i '/maven.aliyun.com/d' settings.gradle
+
+      - name: Full compile validation
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleAppDebug -PenableAbiSplits=false --no-daemon --no-configuration-cache
+        env:
+          COMMIT_NUMBER: ${{ github.run_number }}
+          APP_VERSION_NAME: v5-1-hybrid-stable-${{ github.run_number }}
+
+      - name: Commit only after successful compile
+        shell: bash
+        run: |
+          git checkout -- settings.gradle || true
+
+          if git diff --quiet; then
+            echo "Already upgraded and validated."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            app/src/main/java/io/legado/app/domain/model/readaloud/HumanizedSpeechTuning.kt \
+            app/src/main/java/io/legado/app/domain/model/readaloud/SystemTtsVoiceConfig.kt \
+            app/src/main/java/io/legado/app/domain/model/readaloud/ReadAloudPlaybackQueue.kt \
+            app/src/main/java/io/legado/app/help/readaloud/segment/RuleBasedSpeechSegmenter.kt \
+            app/src/main/java/io/legado/app/help/readaloud/segment/AiSpeechAtomizer.kt \
+            app/src/main/java/io/legado/app/domain/usecase/RefineSpeechWithAiUseCase.kt \
+            app/src/main/java/io/legado/app/service/TTSReadAloudService.kt \
+            app/src/main/java/io/legado/app/domain/model/settings/ReadAloudSettings.kt \
+            app/src/main/java/io/legado/app/data/repository/ReadAloudSettingsRepository.kt
+
+          git commit -m "feat(tts): V5.1 hybrid stable dialogue engine"
+          git push origin HEAD:main
